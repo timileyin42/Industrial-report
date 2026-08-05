@@ -1,0 +1,33 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: zgnis-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zgnis
+      POSTGRES_PASSWORD: zgnis_dev_only
+      POSTGRES_DB: zgnis_solar
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zgnis -d zgnis_solar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: zgnis-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # plaintext, LAN/dev only — do not expose publicly
+      - "8883:8883"   # TLS listener, disabled until Phase 1 (see mosquitto.conf)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+volumes:
+  timescale_data:
