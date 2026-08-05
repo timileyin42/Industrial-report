@@ -1,0 +1,15 @@
+mosquitto/config/passwd
+mosquitto/data/
+mosquitto/log/
+*.log
+
+# OS cruft
+.DS_Store
+
+# Compiled build artifacts (e.g. `go build -o ingestor ./cmd/ingestor`)
+/ingestor
+/api
+/seed-operator
+
+# Design-export archive — already unzipped into design/
+*.zip
