@@ -13,3 +13,12 @@ mosquitto/log/
 
 # Design-export archive — already unzipped into design/
 *.zip
+
+# Stitch design export — kept locally as the design-token/screen reference,
+# never pushed to GitHub (large binary screenshots + not meant to be public)
+design/
+
+# Phase 4 — local backups and dev-only TLS certs/keys, never committed
+backups/
+mosquitto/config/certs/
+loadtest-devices.csv
