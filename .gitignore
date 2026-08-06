@@ -18,6 +18,12 @@ mosquitto/log/
 # never pushed to GitHub (large binary screenshots + not meant to be public)
 design/
 
+# Agent instruction/meta files — internal working docs, not meant to be
+# public on GitHub. Kept locally.
+AGENTS.md
+CLAUDE.md
+SKILL.md
+
 # Phase 4 — local backups and dev-only TLS certs/keys, never committed
 backups/
 mosquitto/config/certs/
