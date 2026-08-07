@@ -136,7 +136,7 @@ func (h *handlers) getEmissionFactor(c echo.Context) error {
 		if claims.Role != domain.RoleOperator {
 			return echo.NewHTTPError(http.StatusForbidden, "history requires operator role")
 		}
-		history, err := h.deps.Emissions.History(ctx, "NG", parseLimit(c))
+		history, err := h.deps.Emissions.History(ctx, c.QueryParam("country"), parseLimit(c))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
@@ -147,7 +147,7 @@ func (h *handlers) getEmissionFactor(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]any{"items": out})
 	}
 
-	factor, err := h.deps.Emissions.Current(ctx, "NG")
+	factor, err := h.deps.Emissions.Current(ctx, c.QueryParam("country"))
 	if err != nil {
 		return emissionsErrorToHTTP(err)
 	}

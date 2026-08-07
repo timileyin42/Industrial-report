@@ -11,6 +11,93 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ExportJobStatus string
+
+const (
+	ExportJobStatusPending   ExportJobStatus = "pending"
+	ExportJobStatusRunning   ExportJobStatus = "running"
+	ExportJobStatusCompleted ExportJobStatus = "completed"
+	ExportJobStatusFailed    ExportJobStatus = "failed"
+)
+
+func (e *ExportJobStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ExportJobStatus(s)
+	case string:
+		*e = ExportJobStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ExportJobStatus: %T", src)
+	}
+	return nil
+}
+
+type NullExportJobStatus struct {
+	ExportJobStatus ExportJobStatus
+	Valid           bool // Valid is true if ExportJobStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullExportJobStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.ExportJobStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ExportJobStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullExportJobStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ExportJobStatus), nil
+}
+
+type ExportJobType string
+
+const (
+	ExportJobTypeSiteTelemetryCsv ExportJobType = "site_telemetry_csv"
+	ExportJobTypeSiteSummaryCsv   ExportJobType = "site_summary_csv"
+	ExportJobTypeFleetSummaryCsv  ExportJobType = "fleet_summary_csv"
+)
+
+func (e *ExportJobType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ExportJobType(s)
+	case string:
+		*e = ExportJobType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ExportJobType: %T", src)
+	}
+	return nil
+}
+
+type NullExportJobType struct {
+	ExportJobType ExportJobType
+	Valid         bool // Valid is true if ExportJobType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullExportJobType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ExportJobType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ExportJobType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullExportJobType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ExportJobType), nil
+}
+
 type ProvenanceType string
 
 const (
@@ -151,6 +238,18 @@ type Device struct {
 	LastContactAt       pgtype.Timestamptz
 }
 
+type ExportJob struct {
+	ID                int64
+	RequestedByUserID int64
+	JobType           ExportJobType
+	SiteID            pgtype.Text
+	Status            ExportJobStatus
+	ResultKey         pgtype.Text
+	Error             pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	CompletedAt       pgtype.Timestamptz
+}
+
 type GridEmissionFactor struct {
 	ID              int64
 	KgCo2PerKwh     pgtype.Numeric
@@ -168,6 +267,25 @@ type IngestionAuditLog struct {
 	ReceivedAt pgtype.Timestamptz
 	Processed  bool
 	Error      pgtype.Text
+}
+
+type Invite struct {
+	ID              int64
+	UserID          int64
+	TokenHash       string
+	InvitedByUserID pgtype.Int8
+	ExpiresAt       pgtype.Timestamptz
+	AcceptedAt      pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+}
+
+type PasswordResetToken struct {
+	ID        int64
+	UserID    int64
+	TokenHash string
+	ExpiresAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
 }
 
 type Site struct {

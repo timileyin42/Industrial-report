@@ -26,7 +26,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -43,7 +46,7 @@ import (
 
 func main() {
 	dbURL := mustEnv("DATABASE_URL")
-	brokerURL := mustEnv("MQTT_BROKER_URL") // e.g. tcp://localhost:1883
+	brokerURL := mustEnv("MQTT_BROKER_URL") // e.g. tcp://localhost:1883 or ssl://localhost:8883
 	mqttUser := mustEnv("MQTT_USERNAME")    // "ingestor-service"
 	mqttPass := mustEnv("MQTT_PASSWORD")
 
@@ -62,6 +65,17 @@ func main() {
 		SetUsername(mqttUser).
 		SetPassword(mqttPass).
 		SetAutoReconnect(true)
+
+	// Phase 4: optional TLS. Only takes effect when MQTT_TLS_CA_CERT is set
+	// (paired with an ssl:// broker URL) — unset behavior is unchanged from
+	// Phase 0-3, so this is additive, not a breaking default.
+	if caCertPath := os.Getenv("MQTT_TLS_CA_CERT"); caCertPath != "" {
+		tlsConfig, err := buildTLSConfig(caCertPath)
+		if err != nil {
+			log.Fatalf("mqtt tls config: %v", err)
+		}
+		opts.SetTLSConfig(tlsConfig)
+	}
 
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
@@ -240,4 +254,20 @@ func mustEnv(key string) string {
 		log.Fatalf("required env var %s not set", key)
 	}
 	return v
+}
+
+// buildTLSConfig loads a CA cert so the ingestor can verify the broker's
+// certificate over ssl://. See docs/tls.md — the cert this points at
+// locally is dev-only (scripts/gen-dev-certs.sh); a real deployment needs
+// a real CA-issued cert for a real hostname.
+func buildTLSConfig(caCertPath string) (*tls.Config, error) {
+	caCert, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to parse CA cert at %s", caCertPath)
+	}
+	return &tls.Config{RootCAs: pool}, nil
 }

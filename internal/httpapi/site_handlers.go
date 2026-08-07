@@ -38,7 +38,10 @@ func (h *handlers) createSite(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 	if req.Timezone == "" {
-		req.Timezone = "Africa/Lagos"
+		// UTC, not a regional guess — a site's real timezone should be
+		// set explicitly (the frontend defaults its picker off the
+		// browser's own timezone, not this fallback).
+		req.Timezone = "UTC"
 	}
 
 	site, err := h.deps.Sites.Create(c.Request().Context(), claims.UserID, registry.CreateSiteInput{

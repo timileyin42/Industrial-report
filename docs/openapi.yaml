@@ -1,0 +1,792 @@
+openapi: 3.0.3
+info:
+  title: Zgnis Solar Monitoring API
+  version: "1.0"
+  description: >
+    Read/admin API for the Zgnis Solar Monitoring Platform. Every endpoint
+    below is auth-gated except login. Operator role sees the whole fleet;
+    restricted role is scoped to exactly one site, enforced server-side
+    (403, never a filtered 200 or a 404) — see CLAUDE.md's access-control
+    rules. This spec covers every route registered in
+    internal/httpapi/router.go as of Phase 4; validate it against that file
+    if either drifts.
+servers:
+  - url: http://localhost:8080/v1
+    description: Local dev (plaintext)
+  - url: https://localhost:8080/v1
+    description: Local dev with API_TLS_CERT_FILE/API_TLS_KEY_FILE set (Phase 4)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Sites
+  - name: Devices
+  - name: Fleet
+  - name: Telemetry
+  - name: Analytics
+  - name: Emissions
+  - name: Benchmarking
+  - name: Anomalies
+  - name: Export
+  - name: Config
+  - name: Audit
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and receive a JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expires_at: { type: string, format: date-time }
+                  role: { type: string, enum: [operator, restricted] }
+                  site_id: { type: string, nullable: true }
+        "401": { description: Invalid email or password }
+
+  /users:
+    post:
+      tags: [Users]
+      summary: Create a user (operator-only)
+      description: Needed to create the first restricted user; there is no self-signup.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, role]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                role: { type: string, enum: [operator, restricted] }
+                site_id: { type: string, nullable: true, description: Required when role=restricted }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { description: Invalid input, or site does not exist }
+        "403": { description: Caller is not an operator }
+
+  /sites:
+    post:
+      tags: [Sites]
+      summary: Create a site (operator-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSiteRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "403": { description: Caller is not an operator }
+    get:
+      tags: [Sites]
+      summary: List sites (paginated)
+      description: Operator sees all sites; restricted sees only their own.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/Site" }
+
+  /sites/{site_id}:
+    get:
+      tags: [Sites]
+      summary: Get a site
+      parameters: [{ $ref: "#/components/parameters/SiteID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "403": { description: Restricted caller does not own this site }
+        "404": { description: Not found }
+
+  /sites/{site_id}/telemetry:
+    get:
+      tags: [Telemetry]
+      summary: List raw telemetry for a site (paginated)
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/TelemetryPoint" }
+        "403": { description: Restricted caller does not own this site }
+
+  /devices:
+    post:
+      tags: [Devices]
+      summary: Register a device (operator-only, rate-limited)
+      description: >
+        Returns the device's plaintext secret exactly once. It is never
+        retrievable again — use rotate-secret if it's lost.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id, site_id]
+              properties:
+                device_id: { type: string }
+                site_id: { type: string }
+                install_notes: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceWithSecret" }
+        "400": { description: Invalid input, or site does not exist }
+        "403": { description: Caller is not an operator }
+    get:
+      tags: [Devices]
+      summary: List devices (paginated)
+      parameters:
+        - name: site_id
+          in: query
+          schema: { type: string }
+          description: Operator may filter by any site; restricted is forced to their own.
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/Device" }
+
+  /devices/{device_id}:
+    get:
+      tags: [Devices]
+      summary: Get a device
+      parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "403": { description: Restricted caller does not own this device's site }
+        "404": { description: Not found }
+
+  /devices/{device_id}/status:
+    get:
+      tags: [Devices]
+      summary: Device online/data-gap status
+      parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device_id: { type: string }
+                  last_seen_at: { type: string, format: date-time, nullable: true }
+                  last_contact_at: { type: string, format: date-time, nullable: true }
+                  online: { type: boolean }
+                  data_gap: { type: boolean }
+                  revoked: { type: boolean }
+        "403": { description: Restricted caller does not own this device's site }
+
+  /devices/{device_id}/revoke:
+    post:
+      tags: [Devices]
+      summary: Revoke a device (operator-only)
+      description: Stops the ingestor from writing this device's data, at the app layer.
+      parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "403": { description: Caller is not an operator }
+
+  /devices/{device_id}/rotate-secret:
+    post:
+      tags: [Devices]
+      summary: Rotate a device's secret (operator-only)
+      parameters: [{ $ref: "#/components/parameters/DeviceID" }]
+      responses:
+        "200":
+          description: Rotated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceWithSecret" }
+        "403": { description: Caller is not an operator }
+
+  /fleet/summary:
+    get:
+      tags: [Fleet]
+      summary: Fleet-wide totals (operator-only)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_sites: { type: integer }
+                  total_devices: { type: integer }
+                  online_devices: { type: integer }
+                  total_capacity_kw: { type: number, nullable: true }
+        "403": { description: Caller is not an operator }
+
+  /fleet/health:
+    get:
+      tags: [Fleet]
+      summary: Fleet-wide data-quality/coverage dashboard (operator-only, paginated)
+      parameters:
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Caller is not an operator }
+
+  /sites/{site_id}/analytics/energy:
+    get:
+      tags: [Analytics]
+      summary: Site energy generated (daily/weekly/monthly)
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergySeries" }
+        "403": { description: Restricted caller does not own this site }
+
+  /sites/{site_id}/analytics/specific-yield:
+    get:
+      tags: [Analytics]
+      summary: Specific yield (kWh/kWp)
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK }
+        "400": { description: Site has no system_size_kw configured }
+        "403": { description: Restricted caller does not own this site }
+
+  /sites/{site_id}/analytics/peak:
+    get:
+      tags: [Analytics]
+      summary: Peak output and time of day, per day
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Restricted caller does not own this site }
+
+  /sites/{site_id}/analytics/capacity-factor:
+    get:
+      tags: [Analytics]
+      summary: Capacity factor (NOT Performance Ratio — see response's definition field)
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK }
+        "400": { description: Site has no system_size_kw configured }
+        "403": { description: Restricted caller does not own this site }
+
+  /sites/{site_id}/analytics/emissions:
+    get:
+      tags: [Emissions]
+      summary: CO2 avoided for a site
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmissionsSeries" }
+        "403": { description: Restricted caller does not own this site }
+        "409": { description: No grid emission factor configured yet — POST /config/emission-factor first }
+
+  /sites/{site_id}/analytics/compare/history:
+    get:
+      tags: [Analytics]
+      summary: Site vs. its own previous period
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Restricted caller does not own this site }
+
+  /sites/{site_id}/analytics/anomalies:
+    get:
+      tags: [Anomalies]
+      summary: Trailing-baseline anomaly check for one site
+      description: >
+        Coarse, weather-unaware check only — see the response's definition
+        field. Site-scoped (not fleet-wide), so restricted users may call it.
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/AsOf" }
+        - name: window_days
+          in: query
+          schema: { type: integer, default: 7 }
+      responses:
+        "200": { description: OK }
+        "403": { description: Restricted caller does not own this site }
+
+  /sites/{site_id}/export/telemetry.csv:
+    get:
+      tags: [Export]
+      summary: Raw telemetry CSV export
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv: { schema: { type: string } }
+        "400": { description: Range exceeds the maximum export window (90 days) }
+        "403": { description: Restricted caller does not own this site }
+
+  /sites/{site_id}/export/summary.csv:
+    get:
+      tags: [Export]
+      summary: Period energy summary CSV export
+      parameters:
+        - { $ref: "#/components/parameters/SiteID" }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv: { schema: { type: string } }
+        "403": { description: Restricted caller does not own this site }
+
+  /fleet/analytics/energy:
+    get:
+      tags: [Analytics]
+      summary: Fleet-wide energy generated (operator-only)
+      parameters:
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+        - name: cohort_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergySeries" }
+        "403": { description: Caller is not an operator }
+
+  /fleet/analytics/emissions:
+    get:
+      tags: [Emissions]
+      summary: Fleet-wide CO2 avoided (operator-only)
+      parameters:
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+        - name: cohort_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "403": { description: Caller is not an operator }
+        "409": { description: No grid emission factor configured yet }
+
+  /fleet/analytics/compare/fleet:
+    get:
+      tags: [Benchmarking]
+      summary: A site vs. fleet average and percentile rank (operator-only)
+      parameters:
+        - name: site_id
+          in: query
+          required: true
+          schema: { type: string }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/AsOf" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Caller is not an operator }
+
+  /fleet/analytics/benchmark:
+    get:
+      tags: [Benchmarking]
+      summary: Fleet segmented by size band / inverter model / cohort (operator-only, paginated)
+      parameters:
+        - name: segment_by
+          in: query
+          schema: { type: string, enum: [system_size_band, inverter_make_model, cohort, region], default: system_size_band }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/AsOf" }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Caller is not an operator }
+
+  /fleet/analytics/trends:
+    get:
+      tags: [Benchmarking]
+      summary: Fleet-level capacity/energy growth over time (operator-only)
+      parameters:
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Caller is not an operator }
+
+  /fleet/analytics/cohorts/{cohort_id}:
+    get:
+      tags: [Benchmarking]
+      summary: One cohort's aggregated capacity + energy (operator-only)
+      parameters:
+        - name: cohort_id
+          in: path
+          required: true
+          schema: { type: string }
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK }
+        "403": { description: Caller is not an operator }
+
+  /fleet/analytics/anomalies:
+    get:
+      tags: [Anomalies]
+      summary: Trailing-baseline anomaly check, fleet-wide (operator-only)
+      parameters:
+        - { $ref: "#/components/parameters/AsOf" }
+        - name: window_days
+          in: query
+          schema: { type: integer, default: 7 }
+      responses:
+        "200": { description: OK }
+        "403": { description: Caller is not an operator }
+
+  /fleet/export/summary.csv:
+    get:
+      tags: [Export]
+      summary: Fleet-wide period summary CSV export (operator-only)
+      parameters:
+        - { $ref: "#/components/parameters/Period" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+        - name: cohort_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv: { schema: { type: string } }
+        "403": { description: Caller is not an operator }
+
+  /config/emission-factor:
+    post:
+      tags: [Config]
+      summary: Set the grid emission factor (operator-only)
+      description: >
+        Append-only — never updates a prior factor. No default is ever
+        seeded; emissions endpoints return 409 until this is called at
+        least once. See docs/decisions and migration 0005.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kg_co2_per_kwh, source, effective_from]
+              properties:
+                kg_co2_per_kwh: { type: number }
+                country: { type: string, default: NG }
+                source: { type: string, description: Citation for the figure }
+                effective_from: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmissionFactor" }
+        "403": { description: Caller is not an operator }
+    get:
+      tags: [Config]
+      summary: Get the current grid emission factor
+      parameters:
+        - name: history
+          in: query
+          schema: { type: boolean, default: false }
+          description: history=true is operator-only
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmissionFactor" }
+        "403": { description: history=true requested by a non-operator }
+        "409": { description: No factor configured yet }
+
+  /audit/actions:
+    get:
+      tags: [Audit]
+      summary: Browse the admin-action audit log (operator-only, paginated)
+      parameters:
+        - name: actor_user_id
+          in: query
+          schema: { type: integer }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: target_type
+          in: query
+          schema: { type: string }
+        - name: target_id
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/AuditEntry" }
+        "403": { description: Caller is not an operator }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SiteID: { name: site_id, in: path, required: true, schema: { type: string } }
+    DeviceID: { name: device_id, in: path, required: true, schema: { type: string } }
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, default: 50 } }
+    From: { name: from, in: query, schema: { type: string }, description: "RFC3339 timestamp or bare date (2026-08-05); a bare 'to' date is treated as end-of-day" }
+    To: { name: to, in: query, schema: { type: string } }
+    Period: { name: period, in: query, schema: { type: string, enum: [daily, weekly, monthly], default: monthly } }
+    AsOf: { name: as_of, in: query, schema: { type: string }, description: "Defaults to now" }
+
+  schemas:
+    Page:
+      type: object
+      properties:
+        next_cursor: { type: string, nullable: true }
+
+    Site:
+      type: object
+      properties:
+        site_id: { type: string }
+        name: { type: string, nullable: true }
+        cohort_id: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        gps_lat: { type: number, nullable: true }
+        gps_lng: { type: number, nullable: true }
+        inverter_make_model: { type: string, nullable: true }
+        system_size_kw: { type: number, nullable: true }
+        timezone: { type: string }
+        created_at: { type: string, format: date-time }
+
+    CreateSiteRequest:
+      type: object
+      required: [site_id, name, timezone]
+      properties:
+        site_id: { type: string }
+        name: { type: string }
+        address: { type: string, nullable: true }
+        gps_lat: { type: number, nullable: true }
+        gps_lng: { type: number, nullable: true }
+        inverter_make_model: { type: string, nullable: true }
+        system_size_kw: { type: number, nullable: true }
+        timezone: { type: string }
+        cohort_id: { type: string, nullable: true }
+
+    Device:
+      type: object
+      properties:
+        device_id: { type: string }
+        site_id: { type: string, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        secret_last_rotated_at: { type: string, format: date-time }
+        install_notes: { type: string, nullable: true }
+
+    DeviceWithSecret:
+      allOf:
+        - $ref: "#/components/schemas/Device"
+        - type: object
+          properties:
+            secret: { type: string, description: Plaintext, shown exactly once }
+
+    User:
+      type: object
+      properties:
+        email: { type: string }
+        role: { type: string, enum: [operator, restricted] }
+        site_id: { type: string, nullable: true }
+
+    TelemetryPoint:
+      type: object
+      properties:
+        ts: { type: string, format: date-time }
+        device_id: { type: string }
+        power_kw: { type: number }
+        energy_kwh_total: { type: number }
+        voltage_v: { type: number, nullable: true }
+        status: { type: string, enum: [ok, fault, offline] }
+
+    EnergySeries:
+      type: object
+      properties:
+        unit: { type: string, example: kWh }
+        period: { type: string }
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              period_start: { type: string, format: date-time }
+              energy_kwh: { type: number }
+              reading_count: { type: integer }
+              backfilled_count: { type: integer }
+        cumulative_kwh: { type: number, description: "Sum over the requested range, not device lifetime" }
+
+    EmissionFactor:
+      type: object
+      properties:
+        id: { type: integer }
+        kg_co2_per_kwh: { type: number }
+        country: { type: string }
+        source: { type: string }
+        effective_from: { type: string, format: date-time }
+
+    EmissionsSeries:
+      type: object
+      properties:
+        unit_kg: { type: string }
+        unit_tonnes: { type: string }
+        period: { type: string }
+        emission_factor: { $ref: "#/components/schemas/EmissionFactor" }
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              period_start: { type: string, format: date-time }
+              energy_kwh: { type: number }
+              kg_co2: { type: number }
+        cumulative_lifetime_co2_tonnes: { type: number }
+
+    AuditEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        actor_email: { type: string, nullable: true }
+        action: { type: string }
+        target_type: { type: string, nullable: true }
+        target_id: { type: string, nullable: true }
+        metadata: { type: object, nullable: true }
+        created_at: { type: string, format: date-time }

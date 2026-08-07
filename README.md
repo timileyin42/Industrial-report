@@ -1,4 +1,4 @@
-# Zgnis Solar Monitoring — Phase 0 + Phase 1 + Phase 2 + Phase 3
+# Zgnis Solar Monitoring — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4
 
 Phase 0 goal: one simulated device → MQTT → TimescaleDB → one API endpoint
 returning a chartable series. Proves the whole pipe before any real hardware
@@ -20,6 +20,12 @@ a naive trailing-baseline anomaly flag, CSV export, and the admin
 audit-log browsing endpoint. Built on a new Timescale continuous
 aggregate (`telemetry_daily`) rather than raw-scan queries.
 
+Phase 4 goal: harden + scale — TLS wiring (dev-cert verified locally),
+backup/restore drill scripts, a retention policy, a load-test tool,
+a full OpenAPI spec, and documented rate-limiting/CORS decisions. See
+`docs/tls.md`, `docs/retention.md`, `docs/openapi.yaml`,
+`docs/load-test-results.md`, and `docs/decisions/`.
+
 See `AGENTS.md` for architecture/conventions and `CLAUDE.md` for the
 non-negotiable rules (phasing, security, design-token fidelity).
 
@@ -27,11 +33,18 @@ non-negotiable rules (phasing, security, design-token fidelity).
 `-H "Content-Type: application/json"` — without it, Echo can't bind the
 JSON body and requests will silently fail as if the fields were empty.
 
-## 1. Start infra
+## 1. Generate dev TLS certs, then start infra
+
+Since Phase 4, Mosquitto's TLS listener (8883) is active by default and
+needs a certificate to start — generate the local dev-only cert **before**
+bringing the stack up, or Mosquitto will fail to start:
 
 ```bash
+./scripts/gen-dev-certs.sh
 docker compose up -d
 ```
+
+See `docs/tls.md` for what this does and doesn't cover.
 
 ## 2. Create MQTT credentials
 
@@ -53,8 +66,11 @@ This applies `0001_init.sql` (Phase 0 schema), `0002_registry_and_auth.sql`
 (Phase 1: `users`, `user_action_audit_log`, device secret rotation
 bookkeeping), `0003_data_quality.sql` (Phase 2: `devices.last_contact_at`,
 `telemetry.quality_flags`), `0004_analytics_rollups.sql` (Phase 3: the
-`telemetry_daily` continuous aggregate), and `0005_emission_factor.sql`
-(Phase 3: the versioned `grid_emission_factor` table).
+`telemetry_daily` continuous aggregate), `0005_emission_factor.sql`
+(Phase 3: the versioned `grid_emission_factor` table), and
+`0006_retention_policy.sql` (Phase 4: a 2-year retention policy on
+`telemetry` — see `docs/retention.md`, this is a placeholder pending
+client confirmation).
 
 **Continuous aggregates need one extra step goose can't do for you**: the
 view is created `WITH NO DATA`, so existing telemetry won't appear in it
@@ -97,8 +113,39 @@ export ONLINE_THRESHOLD_MINUTES=10
 export EXPECTED_READING_INTERVAL_MINUTES=5
 export COVERAGE_WINDOW_HOURS=24
 
+# Invites/password-reset emails — all optional. Unset RESEND_API_KEY or
+# EMAIL_FROM_ADDRESS falls back to a logging no-op sender (see
+# internal/email) so invite/reset endpoints still work in local dev
+# without a Resend account; nothing is actually delivered until both are
+# set and the sending domain is verified with Resend.
+export RESEND_API_KEY=""
+export EMAIL_FROM_ADDRESS=""   # e.g. "no-reply@cleanenergyanalytics.co.uk"
+export APP_BASE_URL="http://localhost:5173"   # builds invite/reset links; defaults to the Vite dev server
+
+# Async export jobs (Slice 3) — all optional. Unset any one of these and
+# job creation still succeeds but every job fails fast with a clear
+# "export storage isn't configured yet" error instead of hanging;
+# the sync CSV endpoints (GET .../export/*.csv) need none of this.
+export R2_ACCOUNT_ID=""
+export R2_ACCESS_KEY_ID=""
+export R2_SECRET_ACCESS_KEY=""
+export R2_BUCKET=""
+
+# Grid emission factor default country — optional, defaults to "NG" to
+# match this platform's first deployment's already-seeded data. Every
+# emissions endpoint also accepts an explicit ?country= override.
+export GRID_COUNTRY="NG"
+
 go run ./cmd/ingestor &
 go run ./cmd/api &
+```
+
+**Frontend** (`web/.env`, see `web/.env.example`-equivalent below) also
+takes one optional key for the site-location map on Site Detail:
+
+```bash
+VITE_API_BASE_URL=http://localhost:8080
+VITE_GOOGLE_MAPS_API_KEY=   # optional — unset shows a graceful placeholder instead of a broken map embed; needs the Maps Embed API enabled on that key
 ```
 
 ## 6. Create the first operator account
@@ -328,6 +375,48 @@ correctly-shaped data; CSV exports include every row in range; the audit
 log is browsable and operator-only; and role/site isolation holds for
 every new endpoint.
 
+## 13. Phase 4 — harden + scale
+
+**TLS**, already verified in `docs/tls.md`'s own walkthrough — regenerate
+dev certs, confirm Mosquitto's 8883 listener handshakes, confirm the
+ingestor connects over `ssl://`, confirm the API's optional TLS listener
+works when `API_TLS_CERT_FILE`/`API_TLS_KEY_FILE` are set.
+
+**Retention** — confirm the policy is registered:
+
+```bash
+docker exec zgnis-timescaledb psql -U zgnis -d zgnis_solar -c \
+  "SELECT job_id, hypertable_name, config FROM timescaledb_information.jobs WHERE proc_name = 'policy_retention';"
+```
+
+**Backups + restore drill**:
+
+```bash
+./scripts/backup.sh
+./scripts/restore-drill.sh
+# expect: RESTORE DRILL PASSED, with non-zero row counts and telemetry recognized as a hypertable
+```
+
+**Load testing** — provision synthetic devices through the real API, then
+run the load tool:
+
+```bash
+export OPERATOR_PASSWORD="change-me-now"
+./scripts/loadtest-provision.sh 100        # takes a while — paced under the registration rate limit, see docs/load-test-results.md
+go run ./cmd/loadtest -devices-file loadtest-devices.csv -duration 30s -interval 5s
+```
+
+See `docs/load-test-results.md` for recorded runs and the first bottleneck
+found.
+
+**Documented exports** — every `/v1` endpoint is specified in
+`docs/openapi.yaml`; it validates as OpenAPI 3.0 and its path list matches
+`internal/httpapi/router.go`'s registered routes 1:1.
+
+**Rate limiting / CORS** — see `docs/decisions/rate-limiting.md` for why
+the current single-instance limiter is accepted as-is, and why CORS has
+nothing left to build until a real dashboard origin exists.
+
 ## What's deliberately not here yet
 
 - Ingestor-side device secret verification — the ingestor still trusts the
@@ -337,8 +426,22 @@ every new endpoint.
 - Automated broker credential provisioning — syncing a newly issued device
   secret into Mosquitto's password file is still a manual `mosquitto_passwd`
   step (AGENTS.md item 1: not automated yet, by design)
-- User invite/self-signup and password reset flows (need email delivery,
-  not yet in the stack — deliberately deferred, not scheduled to any phase)
+- Automated alert emails (e.g. "device offline") — email delivery now
+  exists (invites, password reset), but there's no scheduler/cron and no
+  dedup logic to avoid re-notifying on every check; still queryable state
+  only (anomalies, fleet health), same as before
+- A durable, restart-surviving export job queue — `internal/registry/exports.go`'s
+  async jobs run in-process (a job's params live in a goroutine closure,
+  never persisted); a process restart mid-job is self-healed by marking
+  it failed after 10 minutes, not resumed. Real queue infra (e.g. a
+  separate worker process reading persisted job params) is a follow-up
+  if export volume ever needs it — the sync CSV endpoints remain the
+  simpler default either way
+- Per-site country/grid tracking — `GRID_COUNTRY` (env var) and each
+  emission-factor's own `country` field support multiple values, but
+  there's still one global "current" factor per country, not a per-site
+  assignment. A fleet genuinely spanning grids needs a `sites.country`
+  column and a bigger change to `internal/registry/emissions.go`
 - A real sunrise/sunset or solar-position day/night check — Phase 2 ships a
   coarse, dependency-free civil-time heuristic (`domain.IsCoarseNight`,
   20:00–05:00 local) instead; it's advisory-only (flags, never rejects) and
@@ -367,6 +470,24 @@ every new endpoint.
   grouping (documented in the API response itself)
 - Weather/irradiance normalization, generation forecasting, configurable
   KPI alert thresholds — the concept note's own "Optional/later" bucket
-- TLS on the MQTT listener (enable before any device is on public internet)
-- Multi-instance rate limiting (current limiter is in-memory, single
-  instance — a Phase 4 "harden + scale" gap)
+- **A real CA-issued TLS certificate** — Phase 4 activates TLS everywhere
+  in this stack (broker, DB, API) but only with a self-signed dev cert
+  (`scripts/gen-dev-certs.sh`); a real cert for a real hostname is a
+  deployment-time decision this repo can't make for itself. See
+  `docs/tls.md`'s checklist.
+- **Off-site/cloud backup storage and a recurring schedule** —
+  `scripts/backup.sh`/`restore-drill.sh` prove backup+restore works
+  locally; where backups actually live long-term and what triggers them
+  on a cadence is a deployment decision, not faked with a placeholder
+  credential.
+- **The real retention window** — `0006_retention_policy.sql` sets a
+  2-year placeholder; the actual client-confirmed figure isn't decided
+  here (`docs/retention.md`).
+- **Multi-instance rate limiting** — the in-memory limiter is correct for
+  a single-instance deployment (what this project runs); a shared-store
+  fix is deferred as a documented, permanent decision record
+  (`docs/decisions/rate-limiting.md`), not built speculatively.
+- **Proof this holds at real production scale** — `cmd/loadtest` found a
+  real bottleneck locally (see `docs/load-test-results.md`), but a laptop
+  running docker-compose isn't the target deployment's infra; this is a
+  diagnostic tool, not a production capacity guarantee.

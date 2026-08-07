@@ -17,17 +17,21 @@ import (
 )
 
 type Deps struct {
-	Sites     *registry.Sites
-	Devices   *registry.Devices
-	Users     *registry.Users
-	Fleet     *registry.Fleet
-	Telemetry *registry.Telemetry
-	Analytics *registry.Analytics
-	Emissions *registry.Emissions
-	Benchmark *registry.Benchmark
-	Anomaly   *registry.Anomaly
-	AuditLog  *registry.AuditLog
-	Issuer    auth.TokenIssuer
+	Sites          *registry.Sites
+	Devices        *registry.Devices
+	Users          *registry.Users
+	Fleet          *registry.Fleet
+	Telemetry      *registry.Telemetry
+	Analytics      *registry.Analytics
+	Emissions      *registry.Emissions
+	Benchmark      *registry.Benchmark
+	Anomaly        *registry.Anomaly
+	AuditLog       *registry.AuditLog
+	IngestionAudit *registry.IngestionAudit
+	Invites        *registry.Invites
+	PasswordReset  *registry.PasswordReset
+	Exports        *registry.Exports
+	Issuer         auth.TokenIssuer
 }
 
 func NewRouter(deps Deps) *echo.Echo {
@@ -40,11 +44,17 @@ func NewRouter(deps Deps) *echo.Echo {
 
 	loginLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
 	registerLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2))
+	// Same rate as login — both are public, credential-adjacent endpoints
+	// (accept-invite sets a password; password-reset issues a token).
+	authLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
 
 	v1 := e.Group("/v1")
 
 	// Public
 	v1.POST("/auth/login", h.login, loginLimiter)
+	v1.POST("/invites/accept", h.acceptInvite, authLimiter)
+	v1.POST("/auth/password-reset/request", h.requestPasswordReset, authLimiter)
+	v1.POST("/auth/password-reset/confirm", h.confirmPasswordReset, authLimiter)
 
 	// Authenticated
 	authed := v1.Group("", auth.RequireAuth(deps.Issuer))
@@ -52,6 +62,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	operatorOnly := auth.RequireRole(domain.RoleOperator)
 
 	authed.POST("/users", h.createUser, operatorOnly)
+	authed.POST("/users/invite", h.createInvite, operatorOnly)
 
 	authed.POST("/sites", h.createSite, operatorOnly)
 	authed.GET("/sites", h.listSites)
@@ -91,6 +102,14 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/fleet/analytics/anomalies", h.fleetAnomalies, operatorOnly)
 	authed.GET("/fleet/export/summary.csv", h.fleetSummaryCSV, operatorOnly)
 
+	// Slice 3 — async export jobs, the counterpart to the sync CSV
+	// endpoints above. Access rules are enforced inside the handler
+	// itself (job_type/site_id come from the body, not a :site_id path
+	// param), not route middleware — see createExportJob's comment.
+	authed.POST("/exports", h.createExportJob)
+	authed.GET("/exports", h.listExportJobs)
+	authed.GET("/exports/:id", h.getExportJob)
+
 	// Phase 3 — grid emission factor config (versioned, never invented —
 	// see internal/registry/emissions.go)
 	authed.POST("/config/emission-factor", h.setEmissionFactor, operatorOnly)
@@ -98,6 +117,12 @@ func NewRouter(deps Deps) *echo.Echo {
 
 	// Phase 3 — admin audit-log browsing (migration 0002's deferred TODO)
 	authed.GET("/audit/actions", h.listAuditActions, operatorOnly)
+
+	// Slice 3 — ingestion (data-quality) audit read path, finally exposed.
+	// No RequireSiteAccess middleware here (no :site_id path param) —
+	// scoping for restricted users happens inside the handler, same
+	// siteFilter pattern as listSites/listDevices.
+	authed.GET("/audit/ingestion", h.listIngestionAudit)
 
 	return e
 }

@@ -12,12 +12,24 @@ import (
 )
 
 type Emissions struct {
-	analytics *Analytics
-	q         *db.Queries
+	analytics      *Analytics
+	q              *db.Queries
+	defaultCountry string
 }
 
-func NewEmissions(analytics *Analytics, q *db.Queries) *Emissions {
-	return &Emissions{analytics: analytics, q: q}
+// defaultCountry was a hardcoded "NG" literal in three places here and in
+// emissions_handlers.go — this platform only ever operated in one
+// country, so "current factor" meant "current NG factor." Now
+// configurable via GRID_COUNTRY (see cmd/api/main.go), defaulting to "NG"
+// so existing deployments with an NG factor already seeded keep working
+// unchanged. This is still a single global default, not a per-site
+// country — a fleet spanning multiple countries/grids needs a real
+// per-site country field and is a separate, larger decision.
+func NewEmissions(analytics *Analytics, q *db.Queries, defaultCountry string) *Emissions {
+	if defaultCountry == "" {
+		defaultCountry = "NG"
+	}
+	return &Emissions{analytics: analytics, q: q, defaultCountry: defaultCountry}
 }
 
 // ErrNoEmissionFactor means no operator has ever set a grid emission
@@ -52,6 +64,9 @@ func toEmissionFactor(f db.GridEmissionFactor) EmissionFactor {
 }
 
 func (e *Emissions) Current(ctx context.Context, country string) (EmissionFactor, error) {
+	if country == "" {
+		country = e.defaultCountry
+	}
 	factor, err := e.q.GetCurrentEmissionFactor(ctx, country)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -63,6 +78,9 @@ func (e *Emissions) Current(ctx context.Context, country string) (EmissionFactor
 }
 
 func (e *Emissions) History(ctx context.Context, country string, limit int) ([]EmissionFactor, error) {
+	if country == "" {
+		country = e.defaultCountry
+	}
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
@@ -92,7 +110,7 @@ func (e *Emissions) Set(ctx context.Context, actorUserID int64, in SetEmissionFa
 		return EmissionFactor{}, err
 	}
 	if in.Country == "" {
-		in.Country = "NG"
+		in.Country = e.defaultCountry
 	}
 
 	factor, err := e.q.CreateEmissionFactor(ctx, db.CreateEmissionFactorParams{
@@ -128,7 +146,7 @@ type EmissionsSeries struct {
 // current emission factor. Returns ErrNoEmissionFactor (-> 409 at the
 // handler) if none has been configured yet.
 func (e *Emissions) SiteEmissions(ctx context.Context, siteID, period string, from, to time.Time) (EmissionsSeries, error) {
-	factor, err := e.Current(ctx, "NG")
+	factor, err := e.Current(ctx, "")
 	if err != nil {
 		return EmissionsSeries{}, err
 	}
@@ -140,7 +158,7 @@ func (e *Emissions) SiteEmissions(ctx context.Context, siteID, period string, fr
 }
 
 func (e *Emissions) FleetEmissions(ctx context.Context, cohortID *string, period string, from, to time.Time) (EmissionsSeries, error) {
-	factor, err := e.Current(ctx, "NG")
+	factor, err := e.Current(ctx, "")
 	if err != nil {
 		return EmissionsSeries{}, err
 	}

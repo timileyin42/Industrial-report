@@ -1,5 +1,6 @@
 -- sqlc schema snapshot: mirrors the combined "Up" state of
--- migrations/0001_init.sql through 0005_emission_factor.sql. This file is
+-- migrations/0001_init.sql through 0007_invites_and_password_resets.sql.
+-- This file is
 -- not run against any database — goose migrations remain the only source
 -- of truth for actual schema changes. Keep this in sync whenever a
 -- migration adds/changes a table sqlc needs to know about.
@@ -14,7 +15,7 @@ CREATE TABLE sites (
     inverter_make_model text,
     system_size_kw      numeric,
     install_date        date,
-    timezone            text NOT NULL DEFAULT 'Africa/Lagos',
+    timezone            text NOT NULL DEFAULT 'UTC', -- see migrations/0009_delocalize_defaults.sql
     created_at          timestamptz NOT NULL DEFAULT now()
 );
 
@@ -103,4 +104,40 @@ CREATE TABLE grid_emission_factor (
     effective_from     timestamptz NOT NULL,
     created_at         timestamptz NOT NULL DEFAULT now(),
     created_by_user_id bigint REFERENCES users(id)
+);
+
+-- mirrors migrations/0007_invites_and_password_resets.sql
+CREATE TABLE invites (
+    id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id            bigint NOT NULL REFERENCES users(id),
+    token_hash         text NOT NULL,
+    invited_by_user_id bigint REFERENCES users(id),
+    expires_at         timestamptz NOT NULL,
+    accepted_at        timestamptz,
+    created_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE password_reset_tokens (
+    id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id    bigint NOT NULL REFERENCES users(id),
+    token_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    used_at    timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- mirrors migrations/0008_export_jobs.sql
+CREATE TYPE export_job_status AS ENUM ('pending', 'running', 'completed', 'failed');
+CREATE TYPE export_job_type AS ENUM ('site_telemetry_csv', 'site_summary_csv', 'fleet_summary_csv');
+
+CREATE TABLE export_jobs (
+    id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    requested_by_user_id  bigint NOT NULL REFERENCES users(id),
+    job_type              export_job_type NOT NULL,
+    site_id               text REFERENCES sites(site_id),
+    status                export_job_status NOT NULL DEFAULT 'pending',
+    result_key            text,
+    error                 text,
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    completed_at          timestamptz
 );

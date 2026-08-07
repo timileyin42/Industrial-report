@@ -28,3 +28,9 @@ SKILL.md
 backups/
 mosquitto/config/certs/
 loadtest-devices.csv
+
+# Raw design reference media (multi-MB videos/images) — kept locally as
+# source material for the frontend redesign, never committed directly;
+# only optimized/compressed derivatives that actually ship get added
+# under web/src/assets once built into the app.
+raw-assets/

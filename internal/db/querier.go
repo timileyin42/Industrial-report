@@ -21,6 +21,9 @@ type Querier interface {
 	// Append-only — never UPDATE. Past reports must stay reproducible even if
 	// the official factor changes later.
 	CreateEmissionFactor(ctx context.Context, arg CreateEmissionFactorParams) (GridEmissionFactor, error)
+	CreateExportJob(ctx context.Context, arg CreateExportJobParams) (ExportJob, error)
+	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
+	CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) (PasswordResetToken, error)
 	CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserActionAuditLog(ctx context.Context, arg CreateUserActionAuditLogParams) error
@@ -36,6 +39,7 @@ type Querier interface {
 	// 409, never a fabricated default.
 	GetCurrentEmissionFactor(ctx context.Context, country string) (GridEmissionFactor, error)
 	GetDevice(ctx context.Context, deviceID string) (Device, error)
+	GetExportJob(ctx context.Context, id int64) (ExportJob, error)
 	// Continuous aggregates can't express argmax, so the peak reading's time
 	// of day is resolved via a narrow indexed point lookup instead of a scan.
 	GetPeakReadingTimeForDeviceDay(ctx context.Context, arg GetPeakReadingTimeForDeviceDayParams) (pgtype.Timestamptz, error)
@@ -49,12 +53,28 @@ type Querier interface {
 	GetSite(ctx context.Context, siteID string) (Site, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	// Small, TTL-bounded result set — see migrations/0007's comment on why
+	// token_hash isn't looked up by equality.
+	ListActiveInvites(ctx context.Context) ([]Invite, error)
+	// Same small, TTL-bounded scan-and-bcrypt-compare pattern as
+	// ListActiveInvites — see migrations/0007's comment.
+	ListActivePasswordResetTokens(ctx context.Context) ([]PasswordResetToken, error)
 	// site_filter NULL means "all devices" (operator, no ?site_id= filter).
 	ListDevices(ctx context.Context, arg ListDevicesParams) ([]Device, error)
 	ListEmissionFactorHistory(ctx context.Context, arg ListEmissionFactorHistoryParams) ([]GridEmissionFactor, error)
+	ListExportJobsForUser(ctx context.Context, arg ListExportJobsForUserParams) ([]ExportJob, error)
 	// Same shape as ListSiteDailyRollup but fleet-wide, optionally filtered to
 	// a cohort. Used by fleet energy/trends/benchmark/anomaly registry logic.
 	ListFleetDailyRollup(ctx context.Context, arg ListFleetDailyRollupParams) ([]TelemetryDaily, error)
+	// The ingestor's own write-only audit trail (every message received,
+	// before validation — see migrations/0001_init.sql), finally given a read
+	// path. Kept deliberately separate from user_action_audit_log — this is
+	// data-quality/verification evidence, not an admin-action trail (see
+	// CLAUDE.md: "don't conflate the two"). Joins devices to resolve site_id
+	// for site-scoping (restricted users) and display, since the log itself
+	// only stores device_id. A device that's since been deleted still shows
+	// its audit rows with site_id NULL rather than disappearing.
+	ListIngestionAuditLog(ctx context.Context, arg ListIngestionAuditLogParams) ([]ListIngestionAuditLogRow, error)
 	// Per-device-per-day rows for one site, from the telemetry_daily continuous
 	// aggregate. The registry layer sums across a site's devices per day (a
 	// site can have more than one device) and falls back to
@@ -83,8 +103,14 @@ type Querier interface {
 	// browsing/reporting UI on this table is Phase 3"). Keyset-paginated on
 	// (created_at, id); every filter is optional (NULL = don't filter on it).
 	ListUserActionAuditLog(ctx context.Context, arg ListUserActionAuditLogParams) ([]ListUserActionAuditLogRow, error)
+	MarkExportJobCompleted(ctx context.Context, arg MarkExportJobCompletedParams) error
+	MarkExportJobFailed(ctx context.Context, arg MarkExportJobFailedParams) error
+	MarkExportJobRunning(ctx context.Context, id int64) error
+	MarkInviteAccepted(ctx context.Context, id int64) error
+	MarkPasswordResetTokenUsed(ctx context.Context, id int64) error
 	RevokeDevice(ctx context.Context, deviceID string) (Device, error)
 	RotateDeviceSecret(ctx context.Context, arg RotateDeviceSecretParams) (Device, error)
+	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 }
 
 var _ Querier = (*Queries)(nil)

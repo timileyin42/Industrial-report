@@ -11,18 +11,21 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/timileyin42/zgnis-solar/internal/auth"
 	"github.com/timileyin42/zgnis-solar/internal/db"
+	"github.com/timileyin42/zgnis-solar/internal/email"
 	"github.com/timileyin42/zgnis-solar/internal/httpapi"
 	"github.com/timileyin42/zgnis-solar/internal/registry"
+	"github.com/timileyin42/zgnis-solar/internal/storage"
 )
 
 func main() {
-	dbURL := mustEnv("DATABASE_URL")
+	dbURL := withSSLMode(mustEnv("DATABASE_URL"))
 	jwtSecret := mustEnv("JWT_SECRET")
 
 	onlineThreshold := envMinutes("ONLINE_THRESHOLD_MINUTES", 10)
@@ -44,27 +47,87 @@ func main() {
 	fleet := registry.NewFleet(sites, devices, onlineThreshold, expectedInterval, coverageWindow)
 	telemetry := registry.NewTelemetry(queries)
 	analytics := registry.NewAnalytics(queries)
-	emissions := registry.NewEmissions(analytics, queries)
+	emissions := registry.NewEmissions(analytics, queries, os.Getenv("GRID_COUNTRY"))
 	benchmark := registry.NewBenchmark(analytics)
 	anomaly := registry.NewAnomaly(analytics)
 	auditLog := registry.NewAuditLog(queries)
+	ingestionAudit := registry.NewIngestionAudit(queries)
+
+	// APP_BASE_URL builds invite/reset links (e.g. https://app.cleanenergyanalytics.co.uk)
+	// — defaults to the Vite dev server origin so local dev works without
+	// setting it. RESEND_API_KEY/EMAIL_FROM_ADDRESS are optional: unset
+	// falls back to a logging no-op sender (see internal/email).
+	appBaseURL := envOr("APP_BASE_URL", "http://localhost:5173")
+	sender := email.NewSenderFromEnv()
+	invites := registry.NewInvites(queries, sender, appBaseURL)
+	passwordReset := registry.NewPasswordReset(queries, sender, appBaseURL)
+
+	// R2 storage is optional infra — NewFromEnv returns a nil client (not
+	// an error) when unconfigured, so the API still starts; export jobs
+	// just fail fast with a clear message until R2_* env vars are set.
+	storageClient, err := storage.NewFromEnv(ctx)
+	if err != nil {
+		log.Fatalf("r2 storage init: %v", err)
+	}
+	exports := registry.NewExports(queries, telemetry, analytics, storageClient)
 
 	e := httpapi.NewRouter(httpapi.Deps{
-		Sites:     sites,
-		Devices:   devices,
-		Users:     users,
-		Fleet:     fleet,
-		Telemetry: telemetry,
-		Analytics: analytics,
-		Emissions: emissions,
-		Benchmark: benchmark,
-		Anomaly:   anomaly,
-		AuditLog:  auditLog,
-		Issuer:    auth.NewTokenIssuer(jwtSecret),
+		Sites:          sites,
+		Devices:        devices,
+		Users:          users,
+		Fleet:          fleet,
+		Telemetry:      telemetry,
+		Analytics:      analytics,
+		Emissions:      emissions,
+		Benchmark:      benchmark,
+		Anomaly:        anomaly,
+		AuditLog:       auditLog,
+		IngestionAudit: ingestionAudit,
+		Invites:        invites,
+		PasswordReset:  passwordReset,
+		Exports:        exports,
+		Issuer:         auth.NewTokenIssuer(jwtSecret),
 	})
+
+	// Phase 4: optional TLS listener. Only takes effect when both
+	// API_TLS_CERT_FILE and API_TLS_KEY_FILE are set — unset behavior is
+	// unchanged from Phase 0-3 (plain e.Start), so this is additive.
+	certFile := os.Getenv("API_TLS_CERT_FILE")
+	keyFile := os.Getenv("API_TLS_KEY_FILE")
+	if certFile != "" && keyFile != "" {
+		log.Println("api listening on :8080 (TLS)")
+		e.Logger.Fatal(e.StartTLS(":8080", certFile, keyFile))
+		return
+	}
 
 	log.Println("api listening on :8080")
 	e.Logger.Fatal(e.Start(":8080"))
+}
+
+// withSSLMode appends sslmode to a Postgres connection string when it
+// doesn't already specify one, using DATABASE_SSLMODE (default "disable"
+// — matches Phase 0-3's local-dev default; set to "require"/"verify-full"
+// once a real deployment has real database TLS in place. See docs/tls.md.
+func withSSLMode(dbURL string) string {
+	if strings.Contains(dbURL, "sslmode=") {
+		return dbURL
+	}
+	mode := os.Getenv("DATABASE_SSLMODE")
+	if mode == "" {
+		mode = "disable"
+	}
+	sep := "?"
+	if strings.Contains(dbURL, "?") {
+		sep = "&"
+	}
+	return dbURL + sep + "sslmode=" + mode
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func mustEnv(key string) string {
