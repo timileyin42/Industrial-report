@@ -52,7 +52,7 @@ export function AuditLogPage() {
     <>
       <TopNav title="Audit Log" />
       <div className="flex-1 p-grid-margin space-y-6">
-        <form className="bg-surface-container border border-outline-variant p-4 flex flex-wrap gap-4 items-end" onSubmit={handleFilterSubmit}>
+        <form className="glass-card rounded-2xl p-4 flex flex-wrap gap-4 items-end" onSubmit={handleFilterSubmit}>
           <div className="space-y-1">
             <label className="font-label-caps text-label-caps text-on-surface-variant uppercase" htmlFor="action">
               Action
@@ -63,7 +63,7 @@ export function AuditLogPage() {
               placeholder="e.g. revoke_device"
               value={pendingFilters.action ?? ""}
               onChange={(e) => setPendingFilters((f) => ({ ...f, action: e.target.value || undefined }))}
-              className="bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm px-3 py-2 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+              className="bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-3 py-2 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           <div className="space-y-1">
@@ -76,7 +76,7 @@ export function AuditLogPage() {
               placeholder="e.g. device"
               value={pendingFilters.target_type ?? ""}
               onChange={(e) => setPendingFilters((f) => ({ ...f, target_type: e.target.value || undefined }))}
-              className="bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm px-3 py-2 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+              className="bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-3 py-2 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           <div className="space-y-1">
@@ -88,7 +88,7 @@ export function AuditLogPage() {
               type="date"
               value={pendingFilters.from?.slice(0, 10) ?? ""}
               onChange={(e) => setPendingFilters((f) => ({ ...f, from: e.target.value ? new Date(e.target.value).toISOString() : undefined }))}
-              className="bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm px-3 py-2 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+              className="bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-3 py-2 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           <div className="space-y-1">
@@ -100,19 +100,19 @@ export function AuditLogPage() {
               type="date"
               value={pendingFilters.to?.slice(0, 10) ?? ""}
               onChange={(e) => setPendingFilters((f) => ({ ...f, to: e.target.value ? new Date(e.target.value).toISOString() : undefined }))}
-              className="bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm px-3 py-2 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+              className="bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-3 py-2 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           <button
             type="submit"
-            className="bg-primary-container text-on-primary-container font-bold px-5 py-2 rounded transition-colors"
+            className="bg-primary hover:opacity-90 text-on-primary font-bold px-5 py-2 rounded-full transition-colors shadow-soft"
           >
             Filter
           </button>
         </form>
 
         {isLoading && rows.length === 0 ? (
-          <div className="h-64 bg-surface-container border border-outline-variant animate-pulse" />
+          <div className="h-64 glass-card rounded-xl animate-pulse" />
         ) : rows.length === 0 ? (
           <EmptyState title="No matching activity" body="No audit entries found for the current filters." />
         ) : (
@@ -123,7 +123,7 @@ export function AuditLogPage() {
                 <button
                   onClick={() => setCursor(data.nextCursor)}
                   disabled={isLoading}
-                  className="bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant text-on-surface font-body-base px-6 py-2 rounded transition-colors disabled:opacity-60"
+                  className="glass-card rounded-full text-on-surface hover:text-primary font-body-base px-6 py-2 transition-colors disabled:opacity-60"
                 >
                   {isLoading ? "Loading…" : "Load more"}
                 </button>

@@ -35,9 +35,9 @@ export function AcceptInvitePage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background text-on-surface">
-      <main className="w-full max-w-[400px] px-6">
-        <div className="bg-surface-container border border-outline-variant rounded-lg p-10 flex flex-col items-center">
+    <div className="min-h-screen flex items-center justify-center text-on-surface px-6">
+      <main className="w-full max-w-[400px]">
+        <div className="glass-card rounded-2xl p-10 flex flex-col items-center">
           <div className="mb-10 text-center flex flex-col items-center">
             <Link to="/" aria-label="Back to home">
               <LogoMark size={32} />
@@ -45,8 +45,8 @@ export function AcceptInvitePage() {
             <h1 className="font-headline-lg text-headline-lg font-bold text-primary tracking-tight mb-1 mt-3">
               Set Your Password
             </h1>
-            <p className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest opacity-80">
-              Accept Invite
+            <p className="font-body-base text-body-base text-on-surface-variant">
+              You've been invited to Clean Energy Analytics
             </p>
           </div>
           {!token ? (
@@ -72,7 +72,7 @@ export function AcceptInvitePage() {
                     minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm pl-10 pr-4 py-3 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                    className="w-full bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base pl-10 pr-4 py-3 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -89,7 +89,7 @@ export function AcceptInvitePage() {
                     minLength={8}
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
-                    className="w-full bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm pl-10 pr-4 py-3 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                    className="w-full bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base pl-10 pr-4 py-3 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                   />
                 </div>
               </div>
@@ -97,11 +97,9 @@ export function AcceptInvitePage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-primary-container hover:bg-on-primary-fixed-variant text-on-primary-container font-bold py-4 px-6 rounded flex items-center justify-center gap-2 border border-primary/20 transition-all disabled:opacity-70"
+                className="w-full bg-primary hover:opacity-90 text-on-primary font-bold py-3.5 px-6 rounded-full flex items-center justify-center gap-2 transition-all disabled:opacity-70 shadow-soft"
               >
-                <span className="font-label-caps text-label-caps uppercase tracking-wider">
-                  {isSubmitting ? "Setting password..." : "Set Password & Sign In"}
-                </span>
+                <span>{isSubmitting ? "Setting password…" : "Set Password & Sign In"}</span>
                 <LogIn size={20} />
               </button>
             </form>

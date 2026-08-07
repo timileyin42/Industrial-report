@@ -1,7 +1,17 @@
-/* Self-hosted fonts — not the Stitch export's Google Fonts CDN links.
-   Public Sans and JetBrains Mono are both variable fonts; one file each
-   covers their full weight range, referenced via a font-weight range
-   below rather than one @font-face block per weight. */
+/* Self-hosted fonts — not a Google Fonts CDN link at runtime (the woff2
+   below was downloaded once and committed, same self-hosting pattern as
+   the other fonts here). Plus Jakarta Sans replaced Public Sans
+   throughout for the light/glass redesign; Public Sans's own woff2 file
+   is unused now but left in public/fonts/ rather than deleted, in case
+   anything still references it during the ongoing redesign sweep. */
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-Variable.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
 
 @font-face {
   font-family: "Public Sans";

@@ -23,6 +23,7 @@ export const SiteSchema = z.object({
   inverter_make_model: z.string().nullable().optional(),
   system_size_kw: z.number().nullable().optional(),
   timezone: z.string(),
+  country: z.string(),
   created_at: z.string(),
 });
 export type Site = z.infer<typeof SiteSchema>;
@@ -145,11 +146,28 @@ export const EmissionPointSchema = z.object({
   energy_kwh: z.number(),
   kg_co2: z.number(),
 });
+// CountryEmissionsSchema is one country's contribution to a fleet-wide
+// query spanning more than one grid (backend internal/registry.
+// CountryEmissions) — unconfigured true means that country's sites have
+// real generation but no emission factor set yet, excluded from the
+// total rather than guessed.
+export const CountryEmissionsSchema = z.object({
+  country: z.string(),
+  emission_factor: EmissionFactorSchema.optional(),
+  cumulative_lifetime_co2_tonnes: z.number(),
+  unconfigured: z.boolean(),
+});
+export type CountryEmissions = z.infer<typeof CountryEmissionsSchema>;
+
 export const EmissionsSeriesSchema = z.object({
   unit_kg: z.string(),
   unit_tonnes: z.string(),
   period: z.string(),
-  emission_factor: EmissionFactorSchema,
+  // Present for a single-site query, or a fleet query that happens to be
+  // single-country. A fleet spanning more than one country omits this in
+  // favor of country_breakdown — no single factor represents all of it.
+  emission_factor: EmissionFactorSchema.optional(),
+  country_breakdown: z.array(CountryEmissionsSchema).optional(),
   points: z.array(EmissionPointSchema),
   cumulative_lifetime_co2_tonnes: z.number(),
 });

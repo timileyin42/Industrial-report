@@ -73,7 +73,7 @@ export function IngestionAuditPage() {
     <>
       <TopNav title="Ingestion Log" />
       <div className="flex-1 p-grid-margin space-y-6">
-        <form className="bg-surface-container border border-outline-variant p-4 flex flex-wrap gap-4 items-end" onSubmit={handleFilterSubmit}>
+        <form className="glass-card rounded-2xl p-4 flex flex-wrap gap-4 items-end" onSubmit={handleFilterSubmit}>
           <div className="space-y-1">
             <label className="font-label-caps text-label-caps text-on-surface-variant uppercase" htmlFor="device_id">
               Device ID
@@ -84,7 +84,7 @@ export function IngestionAuditPage() {
               placeholder="e.g. ZG-LOAD-00188"
               value={pendingFilters.device_id ?? ""}
               onChange={(e) => setPendingFilters((f) => ({ ...f, device_id: e.target.value || undefined }))}
-              className="bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm px-3 py-2 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+              className="bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-3 py-2 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             />
           </div>
           <label className="flex items-center gap-2 font-body-base text-body-base text-on-surface-variant pb-2">
@@ -96,13 +96,13 @@ export function IngestionAuditPage() {
             />
             Errors only
           </label>
-          <button type="submit" className="bg-primary-container text-on-primary-container font-bold px-5 py-2 rounded transition-colors">
+          <button type="submit" className="bg-primary hover:opacity-90 text-on-primary font-bold px-5 py-2 rounded-full transition-colors shadow-soft">
             Filter
           </button>
         </form>
 
         {isLoading && rows.length === 0 ? (
-          <div className="h-64 bg-surface-container border border-outline-variant animate-pulse" />
+          <div className="h-64 glass-card rounded-xl animate-pulse" />
         ) : rows.length === 0 ? (
           <EmptyState title="No ingestion activity" body="No ingestion audit entries found for the current filters." />
         ) : (
@@ -111,7 +111,7 @@ export function IngestionAuditPage() {
             {rows
               .filter((e) => e.id === expanded)
               .map((e) => (
-                <div key={e.id} className="bg-surface-container-lowest border border-outline-variant p-4 overflow-x-auto">
+                <div key={e.id} className="glass-card rounded-xl p-4 overflow-x-auto">
                   {e.error && <p className="text-error font-body-base mb-2">{e.error}</p>}
                   <pre className="font-data-mono-sm text-data-mono-sm text-on-surface-variant whitespace-pre-wrap">
                     {JSON.stringify(e.raw_payload, null, 2)}
@@ -123,7 +123,7 @@ export function IngestionAuditPage() {
                 <button
                   onClick={() => setCursor(data.nextCursor)}
                   disabled={isLoading}
-                  className="bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant text-on-surface font-body-base px-6 py-2 rounded transition-colors disabled:opacity-60"
+                  className="glass-card rounded-full text-on-surface hover:text-primary font-body-base px-6 py-2 transition-colors disabled:opacity-60"
                 >
                   {isLoading ? "Loading…" : "Load more"}
                 </button>

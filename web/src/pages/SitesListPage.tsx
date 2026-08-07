@@ -56,7 +56,7 @@ export function SitesListPage() {
           <div className="flex justify-end">
             <Link
               to="/app/sites/new"
-              className="bg-primary-container text-primary font-label-caps py-2.5 px-5 rounded flex items-center gap-2 border border-primary/30 hover:bg-primary/20 transition-all"
+              className="bg-primary hover:opacity-90 text-on-primary font-semibold py-2.5 px-5 rounded-full flex items-center gap-2 transition-all shadow-soft"
             >
               <Plus size={18} />
               <span>Add Site</span>
@@ -67,7 +67,7 @@ export function SitesListPage() {
         {isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : isLoading || !data ? (
-          <div className="h-64 bg-surface-container border border-outline-variant animate-pulse" />
+          <div className="h-64 glass-card rounded-xl animate-pulse" />
         ) : data.items.length === 0 ? (
           <EmptyState
             title="No sites registered yet"
@@ -76,7 +76,7 @@ export function SitesListPage() {
               isOperator ? (
                 <Link
                   to="/app/sites/new"
-                  className="px-8 py-3 bg-primary-container text-primary font-bold rounded-lg border border-primary hover:bg-primary hover:text-on-primary transition-all flex items-center gap-2"
+                  className="px-8 py-3 bg-primary text-on-primary font-bold rounded-full hover:opacity-90 transition-all flex items-center gap-2 shadow-soft"
                 >
                   <Plus size={20} />
                   <span>Add your first site</span>

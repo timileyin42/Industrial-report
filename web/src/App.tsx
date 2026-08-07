@@ -9,6 +9,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        {/* Fixed behind every page — see index.css's .app-backdrop comment
+            for why this is a CSS gradient standing in for a real photo. */}
+        <div className="app-backdrop" aria-hidden="true" />
         <RouterProvider router={router} />
       </AuthProvider>
     </QueryClientProvider>

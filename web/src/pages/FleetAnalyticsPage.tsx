@@ -89,17 +89,50 @@ export function FleetAnalyticsPage() {
           />
         </div>
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
-          <div className="p-6 border-b border-outline-variant">
+        {/* Fleet spans more than one grid — no single factor represents
+            all of it, so the backend returns a per-country breakdown
+            instead of one emission_factor (see registry.CountryEmissions).
+            An unconfigured country's sites generate real energy that's
+            excluded from the total above until someone sets its factor
+            — flagged here rather than left invisible. */}
+        {emissionsQuery.data?.country_breakdown && (
+          <div className="glass-card rounded-2xl p-6 space-y-2">
+            <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">
+              Emissions by grid
+            </span>
+            <div className="flex flex-wrap gap-4 pt-2">
+              {emissionsQuery.data.country_breakdown.map((c) => (
+                <div key={c.country} className="flex items-center gap-2 text-body-base">
+                  <span className="font-semibold text-on-surface">{c.country}</span>
+                  {c.unconfigured ? (
+                    <span className="text-[11px] text-secondary">
+                      No emission factor set —{" "}
+                      <Link to="/app/settings/emissions" className="underline">
+                        configure
+                      </Link>
+                    </span>
+                  ) : (
+                    <span className="text-on-surface-variant font-data-mono-sm text-data-mono-sm">
+                      {c.cumulative_lifetime_co2_tonnes.toFixed(2)} t CO2
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/60">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Fleet Energy Output</span>
           </div>
           <div className="h-[240px] p-6">
             {energyQuery.isLoading ? (
-              <div className="h-full bg-surface-container animate-pulse" />
+              <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
             ) : energyPoints.length < 2 ? (
               <EmptyState title="Not enough data yet" body="Fleet energy output will chart here once there's more history." />
             ) : (
-              <LineChart points={energyPoints} color="#95d3ba" />
+              <LineChart points={energyPoints} color="#2f8fe0" />
             )}
           </div>
         </div>
@@ -110,24 +143,24 @@ export function FleetAnalyticsPage() {
             title="No grid emission factor configured"
             body="Emissions-avoided figures need a grid emission factor set first."
             action={
-              <Link to="/app/settings/emissions" className="bg-primary-container text-on-primary-container font-bold px-4 py-2 rounded">
+              <Link to="/app/settings/emissions" className="bg-primary text-on-primary font-bold px-4 py-2 rounded-full shadow-soft">
                 Configure emission factor
               </Link>
             }
           />
         )}
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
-          <div className="p-6 border-b border-outline-variant">
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/60">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Fleet Growth Trend</span>
           </div>
           <div className="h-[220px] p-6">
             {trendsQuery.isLoading ? (
-              <div className="h-full bg-surface-container animate-pulse" />
+              <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
             ) : trendPoints.length < 2 ? (
               <EmptyState title="Not enough history yet" body="Fleet growth trend will chart here once there's more month-over-month data." />
             ) : (
-              <LineChart points={trendPoints} color="#ffb95f" />
+              <LineChart points={trendPoints} color="#f2a93b" />
             )}
           </div>
         </div>
@@ -135,7 +168,7 @@ export function FleetAnalyticsPage() {
         <div className="space-y-3">
           <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Segment Benchmark</span>
           {segmentQuery.isLoading ? (
-            <div className="h-32 bg-surface-container border border-outline-variant animate-pulse" />
+            <div className="h-32 glass-card rounded-xl animate-pulse" />
           ) : !segmentQuery.data || segmentQuery.data.items.length === 0 ? (
             <EmptyState title="No segments yet" body="Segment benchmarking appears here once sites have system sizes configured." />
           ) : (
@@ -151,7 +184,7 @@ export function FleetAnalyticsPage() {
             <TriangleAlert size={14} className="text-secondary" /> Fleet Anomalies
           </span>
           {anomalyQuery.isLoading ? (
-            <div className="h-32 bg-surface-container border border-outline-variant animate-pulse" />
+            <div className="h-32 glass-card rounded-xl animate-pulse" />
           ) : !anomalyQuery.data || anomalyQuery.data.flags.length === 0 ? (
             <EmptyState title="No anomalies flagged" body="No sites currently show a significant drop below their trailing baseline." />
           ) : (

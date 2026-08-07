@@ -51,7 +51,7 @@ export function AsyncExportButton({ label, input }: { label: string; input: Crea
     return (
       <a
         href={job.download_url}
-        className="flex items-center gap-2 bg-primary-container text-on-primary-container font-body-base text-body-base px-4 py-2 rounded transition-colors"
+        className="flex items-center gap-2 bg-primary text-on-primary font-body-base text-body-base px-4 py-2 rounded-full transition-colors shadow-soft"
       >
         <Download size={16} />
         <span>Download Ready</span>
@@ -63,7 +63,7 @@ export function AsyncExportButton({ label, input }: { label: string; input: Crea
     return (
       <button
         onClick={handleClick}
-        className="flex items-center gap-2 bg-surface-container-high border border-error/40 text-error font-body-base text-body-base px-4 py-2 rounded transition-colors"
+        className="flex items-center gap-2 glass-card rounded-full text-error font-body-base text-body-base px-4 py-2 transition-colors"
       >
         <span>{error ?? job?.error ?? "Export failed"} — retry</span>
       </button>
@@ -72,7 +72,7 @@ export function AsyncExportButton({ label, input }: { label: string; input: Crea
 
   if (job && (job.status === "pending" || job.status === "running")) {
     return (
-      <span className="flex items-center gap-2 bg-surface-container-high border border-outline-variant text-on-surface-variant font-body-base text-body-base px-4 py-2 rounded">
+      <span className="flex items-center gap-2 glass-card rounded-full text-on-surface-variant font-body-base text-body-base px-4 py-2">
         <Clock size={16} className="animate-pulse" />
         <span>{job.status === "pending" ? "Queued…" : "Generating…"}</span>
       </span>
@@ -83,7 +83,7 @@ export function AsyncExportButton({ label, input }: { label: string; input: Crea
     <button
       onClick={handleClick}
       disabled={isCreating}
-      className="flex items-center gap-2 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-2 rounded transition-colors disabled:opacity-60"
+      className="flex items-center gap-2 glass-card rounded-full text-on-surface hover:text-primary font-body-base text-body-base px-4 py-2 transition-colors disabled:opacity-60"
     >
       {isCreating ? <Loader2 size={16} className="animate-spin" /> : <Clock size={16} />}
       <span>{label}</span>

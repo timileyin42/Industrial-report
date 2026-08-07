@@ -3,12 +3,14 @@ import { Grid2x2, MapPin, Radio, LogOut, BarChart3, HeartPulse, ScrollText, File
 import { useAuth } from "../../auth/AuthContext";
 import { LogoMark } from "../brand/Logo";
 
+// Pill-highlighted nav items per the light/glass redesign — no more
+// left/right border accent, a soft rounded background instead.
 const navItemClass = ({ isActive }: { isActive: boolean }) =>
   [
-    "flex items-center gap-3 px-3 py-2 rounded transition-colors font-body-base",
+    "flex items-center gap-3 px-4 py-2.5 rounded-full transition-colors font-body-base text-body-base",
     isActive
-      ? "text-primary font-bold bg-surface-container-high border-r-4 border-primary"
-      : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface",
+      ? "text-on-primary-container font-semibold bg-primary-container"
+      : "text-on-surface-variant hover:bg-surface-dim hover:text-on-surface",
   ].join(" ");
 
 // General Settings/Reports are still omitted — no export-job system or
@@ -29,7 +31,7 @@ export function Sidebar() {
   const isOperator = session?.role === "operator";
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-[240px] bg-surface-container-low border-r border-outline-variant flex-col py-grid-margin z-50">
+    <aside className="hidden md:flex fixed left-4 top-4 bottom-4 w-[240px] glass-card rounded-2xl flex-col py-grid-margin z-50">
       <Link to="/" className="px-6 mb-10 flex items-start gap-2 hover:opacity-90 transition-opacity" aria-label="Back to home">
         <LogoMark size={20} />
         <div>
@@ -39,7 +41,7 @@ export function Sidebar() {
           <p className="font-label-caps text-label-caps text-primary uppercase tracking-widest mt-1">Fleet Management</p>
         </div>
       </Link>
-      <nav className="flex-1 px-3 space-y-1">
+      <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
         {isOperator && (
           <NavLink to="/app" className={navItemClass} end>
             <Grid2x2 size={20} />
@@ -80,7 +82,7 @@ export function Sidebar() {
       <div className="px-3 pt-6 border-t border-outline-variant">
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors rounded font-body-base"
+          className="w-full flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:bg-surface-dim hover:text-on-surface transition-colors rounded-full font-body-base"
         >
           <LogOut size={20} />
           <span>Logout</span>
@@ -105,7 +107,7 @@ export function MobileNav() {
   const isOperator = session?.role === "operator";
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-density-base bg-surface-container-low border-t border-outline-variant">
+    <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 flex justify-around items-center h-16 px-density-base glass-card rounded-2xl">
       {isOperator && (
         <NavLink to="/app" className={mobileNavItemClass} end>
           <Grid2x2 size={20} />

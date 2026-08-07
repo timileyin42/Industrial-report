@@ -23,7 +23,7 @@ export function ExportButton({ label, onExport }: { label: string; onExport: () 
     <button
       onClick={handleClick}
       disabled={isExporting}
-      className="flex items-center gap-2 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-2 rounded transition-colors disabled:opacity-60"
+      className="flex items-center gap-2 glass-card rounded-full text-on-surface hover:text-primary font-body-base text-body-base px-4 py-2 transition-colors disabled:opacity-60"
     >
       {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
       <span>{failed ? "Export failed — retry" : label}</span>

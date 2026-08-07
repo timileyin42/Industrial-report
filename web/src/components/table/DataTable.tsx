@@ -55,11 +55,11 @@ export function DataTable<T>({
   }, [columns, rows]);
 
   return (
-    <div className="relative bg-surface-container-low border border-outline-variant overflow-hidden">
+    <div className="relative glass-card rounded-xl overflow-hidden">
       <div ref={scrollRef} className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-surface-container-highest/50 border-b border-outline-variant">
+            <tr className="border-b border-outline-variant">
               {columns.map((col) => (
                 <th
                   key={col.header}
@@ -72,13 +72,13 @@ export function DataTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-outline-variant/30">
+          <tbody className="divide-y divide-outline-variant/60">
             {rows.map((row) => (
-              <tr key={rowKey(row)} className="hover:bg-surface-container-highest/30 transition-colors">
+              <tr key={rowKey(row)} className="hover:bg-white/50 transition-colors">
                 {columns.map((col) => (
                   <td
                     key={col.header}
-                    className={`px-6 py-4 ${col.isMono ? "font-data-mono-sm text-data-mono-sm" : "font-body-base"} ${
+                    className={`px-6 py-4 text-on-surface ${col.isMono ? "font-data-mono-sm text-data-mono-sm" : "font-body-base"} ${
                       col.align === "right" ? "text-right" : ""
                     }`}
                   >
@@ -91,7 +91,7 @@ export function DataTable<T>({
         </table>
       </div>
       {canScrollMore && (
-        <div className="md:hidden pointer-events-none absolute top-0 right-0 h-full w-12 bg-gradient-to-l from-background/80 via-background/30 to-transparent flex items-center justify-end">
+        <div className="md:hidden pointer-events-none absolute top-0 right-0 h-full w-12 bg-gradient-to-l from-white/90 via-white/40 to-transparent flex items-center justify-end">
           <ChevronRight size={18} className="text-primary animate-pulse mr-1" />
         </div>
       )}

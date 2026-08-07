@@ -13,13 +13,16 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.101.4",
+    "@types/tz-lookup": "^6.1.2",
     "autoprefixer": "^10.5.4",
+    "framer-motion": "^13.0.0",
     "lucide-react": "^1.29.0",
     "postcss": "^8.5.26",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "tailwindcss": "^4.3.3",
+    "tz-lookup": "^6.1.25",
     "zod": "^4.4.3"
   },
   "devDependencies": {

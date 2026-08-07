@@ -4,7 +4,7 @@
 // library for one simple line.
 export function LineChart({
   points,
-  color = "#95d3ba",
+  color = "#2f8fe0",
   height = 220,
 }: {
   points: { x: number; y: number }[];

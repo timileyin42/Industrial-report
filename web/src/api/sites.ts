@@ -11,6 +11,18 @@ export interface CreateSiteInput {
   system_size_kw?: number;
   timezone: string;
   cohort_id?: string;
+  // Resolves which grid emission factor this site's CO2-offset reporting
+  // uses (backend migrations/0010_site_country.sql) — required, no
+  // server-side default.
+  country: string;
+}
+
+export async function updateSiteCountry(siteId: string, country: string): Promise<Site> {
+  const data = await apiRequest<unknown>(`/v1/sites/${encodeURIComponent(siteId)}/country`, {
+    method: "PATCH",
+    body: { country },
+  });
+  return SiteSchema.parse(data);
 }
 
 export async function listSites(cursor?: string, limit = 50): Promise<{ items: Site[]; nextCursor?: string }> {

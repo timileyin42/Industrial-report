@@ -2,43 +2,80 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Download, Database, Monitor, Router, LineChart as LineChartIcon } from "lucide-react";
 import { LandingNav } from "./LandingNav";
 import { LandingFooter } from "./LandingFooter";
-import { NetworkHeroBackground } from "../../components/landing/NetworkHeroBackground";
-import fullDashboard from "../../assets/landing/site-power-chart.png";
+import { VideoBackground } from "../../components/landing/VideoBackground";
+import { ChaosToControlCards } from "../../components/landing/ChaosToControlCards";
+import { EnergyFlowIllustration } from "../../components/dashboard/EnergyFlowIllustration";
+import fullDashboard from "../../assets/landing/dashboard-light-preview.png";
 
-// Reference: design/landing_home/code.html. The hero no longer carries
-// the mockup's "Uptime SLA 99.99%" / "Data Resolution 1s" stats or the
-// "Fleet-Scale Proof Strip" section ("5,000+ Sites Monitored", "1.2M
-// Tons CO2 Avoided", etc.) — all fabricated, none backed by anything
-// this platform can actually measure. The hero's "Request a Demo" / "See
-// it in action" buttons are gone too — neither went anywhere (no demo
-// booking flow, no product video exists); the one CTA that remains
-// (Sign In) is the one thing on this page that's actually real.
+// Reference: design/landing_home/code.html, redesigned for the
+// light/glass system. The hero no longer carries the mockup's fabricated
+// "Uptime SLA 99.99%" stats or "Fleet-Scale Proof Strip" ("5,000+ Sites
+// Monitored" etc.) — none backed by anything this platform can actually
+// measure. The hero's dead "Request a Demo"/"See it in action" buttons
+// are gone too; the one CTA that remains (Sign In) is the one thing on
+// this page that's real. The Energy Flow illustration here uses
+// illustrative example values (same component as the real dashboard's
+// Energy Flow panel, which uses real ones) — that's normal product-demo
+// practice, the same way any SaaS marketing site shows example data in a
+// product screenshot, not a claim about a specific customer's fleet.
+//
+// Hero and closing-CTA background videos: real stock footage (aerial wind
+// farm; abstract sun/particle loop), no watermarks or third-party
+// branding — cropped to ~15s and compressed for web. Worth noting: the
+// wind farm clip is wind energy, not solar, while this product's copy is
+// solar-specific throughout. Used anyway for the visual (bright sky/green
+// fields reads well against the light theme) — flagged here rather than
+// silently glossed over.
 export function HomePage() {
   return (
     <div className="bg-background text-on-background font-body-base antialiased min-h-screen flex flex-col">
       <LandingNav />
-      <main className="flex-grow pt-[80px]">
-        {/* Hero */}
-        <section className="relative pt-24 pb-32 overflow-hidden border-b border-outline-variant">
-          <NetworkHeroBackground />
-          <div className="max-w-7xl mx-auto px-grid-margin relative z-10">
-            <div className="max-w-2xl flex flex-col gap-8">
-              <h1 className="font-headline-lg text-[48px] leading-[1.1] tracking-tight font-bold text-on-background">
-                Turning scattered solar data into trustworthy,{" "}
-                <span className="text-primary">verification-ready insight</span> at fleet scale.
-              </h1>
-              <p className="text-[18px] leading-relaxed text-on-surface-variant max-w-xl">
-                Real-time monitoring, fleet-wide visibility, and audit-ready data for solar installers and
-                asset operators. A true industrial-grade infrastructure for modern energy fleets.
-              </p>
-              <div className="pt-4">
-                <Link
-                  to="/login"
-                  className="inline-flex items-center gap-2 bg-primary-container hover:bg-inverse-primary text-on-primary-container px-6 py-3 rounded font-semibold transition-all w-fit"
-                >
-                  <span>Sign In</span>
-                  <ArrowRight size={18} />
-                </Link>
+      <main className="flex-grow">
+        {/* Hero — no top padding on this section: the video fills the
+            page from y=0, behind the fixed (now background-less) nav,
+            so the "brim" of the page (logo/links/Sign In) sits directly
+            over the footage instead of a white bar. min-h-screen makes
+            the video run the full viewport height, so "From Chaos to
+            Control" only appears once you scroll past a complete,
+            full-bleed hero — not a short strip of video. pt-28/pt-36 on
+            the content wrapper clears the 80px-tall nav with room to
+            spare at every breakpoint. */}
+        <section className="relative min-h-screen flex items-center overflow-hidden">
+          <VideoBackground
+            src="/videos/hero-windfarm.mp4"
+            poster="/videos/hero-windfarm-poster.jpg"
+            overlayClassName="absolute inset-0 bg-gradient-to-r from-background/65 via-background/35 to-background/10"
+          />
+          <div className="max-w-7xl mx-auto px-grid-margin relative z-10 pt-28 sm:pt-32 md:pt-36 pb-16 w-full">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+              <div className="flex flex-col gap-6 sm:gap-8">
+                <h1 className="font-headline-lg text-[34px] sm:text-[42px] md:text-[48px] leading-[1.1] tracking-tight font-bold text-on-background [text-shadow:0_2px_20px_rgba(238,244,251,0.9)]">
+                  Real-time visibility into{" "}
+                  <span className="text-primary">every solar site you manage</span>.
+                </h1>
+                <p className="text-[16px] sm:text-[18px] leading-relaxed text-on-surface-variant max-w-xl [text-shadow:0_2px_16px_rgba(238,244,251,0.95)]">
+                  Real-time monitoring, fleet-wide visibility, and audit-ready data for solar installers and
+                  asset operators. A true industrial-grade infrastructure for modern energy fleets.
+                </p>
+                <div className="pt-2 sm:pt-4">
+                  <Link
+                    to="/login"
+                    className="inline-flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary px-6 py-3 rounded-full font-semibold transition-all w-fit shadow-soft"
+                  >
+                    <span>Sign In</span>
+                    <ArrowRight size={18} />
+                  </Link>
+                </div>
+              </div>
+              <div className="glass-card rounded-2xl p-4 sm:p-6">
+                <EnergyFlowIllustration
+                  solar={{ label: "Solar Generation", value: "5.62 kW", available: true }}
+                  battery={{ label: "Battery Storage", value: "1.8 kW", available: true }}
+                  grid={{ label: "Grid Import", value: "0.45 MW", available: true }}
+                  consumption={{ label: "Consumption", value: "4.34 MW", available: true }}
+                  animated
+                  height={280}
+                />
               </div>
             </div>
           </div>
@@ -53,22 +90,7 @@ export function HomePage() {
                 Standardize disparate telemetry into a single, unified operational source of truth.
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {[
-                { from: "Fragmented Data", to: "Unified Fleet View", body: "Aggregate inverter, meter, and weather station data across multiple OEMs into one normalized schema." },
-                { from: "Opaque Status", to: "Verified Reporting", body: "Real-time device-level status monitoring with data provenance for full auditability." },
-                { from: "Unstructured Data", to: "Audit-Ready ESG", body: "Generate structured reports for carbon avoidance and energy yield tailored for regulatory compliance." },
-              ].map((item) => (
-                <div key={item.from} className="bg-surface-container-low p-6 rounded-lg border border-outline-variant flex flex-col gap-4">
-                  <div className="flex justify-between items-center pb-4 border-b border-outline-variant">
-                    <span className="text-error/80 font-semibold line-through">{item.from}</span>
-                    <span className="text-outline">→</span>
-                    <span className="text-primary font-bold">{item.to}</span>
-                  </div>
-                  <p className="text-on-surface-variant text-sm mt-2">{item.body}</p>
-                </div>
-              ))}
-            </div>
+            <ChaosToControlCards />
           </div>
         </section>
 
@@ -121,43 +143,45 @@ export function HomePage() {
         </section>
 
         {/* Product Showcase */}
-        <section className="py-24 bg-surface-container-lowest border-b border-outline-variant">
+        <section className="py-24 border-b border-outline-variant">
           <div className="max-w-6xl mx-auto px-grid-margin">
             <div className="text-center mb-12">
-              <h2 className="font-headline-lg text-headline-lg mb-4">Command Center Fidelity</h2>
-              <p className="text-on-surface-variant">Built for the control room. Dark-mode native to reduce operator fatigue.</p>
+              <h2 className="font-headline-lg text-headline-lg mb-4">Command Center Clarity</h2>
+              <p className="text-on-surface-variant">A calm, glass-clean interface that keeps operators focused, not fatigued.</p>
             </div>
-            <div className="rounded-xl border border-outline-variant bg-surface-container-high shadow-2xl overflow-hidden">
-              <div className="h-10 bg-surface flex items-center px-4 border-b border-outline-variant gap-4">
+            <div className="glass-card rounded-2xl overflow-hidden">
+              <div className="h-10 bg-white/60 flex items-center px-4 border-b border-outline-variant gap-4">
                 <div className="flex gap-2">
                   <div className="w-3 h-3 rounded-full bg-outline-variant" />
                   <div className="w-3 h-3 rounded-full bg-outline-variant" />
                   <div className="w-3 h-3 rounded-full bg-outline-variant" />
                 </div>
-                <div className="flex-grow bg-surface-container-low rounded h-6 border border-outline-variant/50 flex items-center justify-center text-xs text-on-surface-variant font-data-mono-sm">
+                <div className="flex-grow bg-surface-dim rounded h-6 border border-outline-variant/50 flex items-center justify-center text-xs text-on-surface-variant">
                   app.cleanenergyanalytics.co.uk/dashboard
                 </div>
               </div>
-              <div className="bg-background relative">
-                <img src={fullDashboard} alt="Full Clean Energy Analytics Dashboard" className="w-full h-auto object-cover opacity-90" />
-                <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-60" />
-              </div>
+              <img src={fullDashboard} alt="Clean Energy Analytics Dashboard" className="w-full h-auto object-cover" />
             </div>
           </div>
         </section>
 
         {/* Final CTA */}
-        <section className="py-24 bg-primary-container border-t border-b border-on-primary-container/20">
-          <div className="max-w-4xl mx-auto px-grid-margin text-center flex flex-col items-center">
-            <h2 className="font-headline-lg text-[40px] text-white mb-6 font-bold tracking-tight">
+        <section className="relative py-24 border-t border-b border-on-primary/10 overflow-hidden">
+          <VideoBackground
+            src="/videos/hero-particles.mp4"
+            poster="/videos/hero-particles-poster.jpg"
+            overlayClassName="absolute inset-0 bg-gradient-to-b from-primary/60 via-primary/45 to-primary/70"
+          />
+          <div className="relative z-10 max-w-4xl mx-auto px-grid-margin text-center flex flex-col items-center">
+            <h2 className="font-headline-lg text-[40px] text-on-primary mb-6 font-bold tracking-tight [text-shadow:0_2px_16px_rgba(11,79,122,0.6)]">
               Ready to scale your solar fleet operations?
             </h2>
-            <p className="text-primary-fixed mb-10 text-lg">
+            <p className="text-on-primary/90 mb-10 text-lg [text-shadow:0_1px_10px_rgba(11,79,122,0.5)]">
               Stop managing spreadsheets and proprietary portals. Start managing energy.
             </p>
             <Link
               to="/login"
-              className="bg-white text-primary-container hover:bg-surface-tint px-8 py-4 rounded font-bold text-lg transition-colors shadow-lg"
+              className="bg-white text-primary hover:bg-surface-tint px-8 py-4 rounded-full font-bold text-lg transition-colors shadow-lg"
             >
               Sign In
             </Link>

@@ -59,7 +59,7 @@ export function DevicesListPage() {
               roles already land on. */}
           <Link
             to="/app/ingestion-log"
-            className="md:hidden flex items-center gap-2 bg-surface-container border border-outline-variant hover:border-primary-container text-on-surface-variant hover:text-on-surface font-body-base text-body-base px-4 py-2 rounded transition-colors"
+            className="md:hidden flex items-center gap-2 glass-card rounded-full text-on-surface-variant hover:text-primary font-body-base text-body-base px-4 py-2 transition-colors"
           >
             <FileClock size={16} />
             <span>Ingestion Log</span>
@@ -67,7 +67,7 @@ export function DevicesListPage() {
           {isOperator && (
             <Link
               to="/app/devices/new"
-              className="bg-primary-container text-primary font-label-caps py-2.5 px-5 rounded flex items-center gap-2 border border-primary/30 hover:bg-primary/20 transition-all ml-auto"
+              className="bg-primary hover:opacity-90 text-on-primary font-semibold py-2.5 px-5 rounded-full flex items-center gap-2 transition-all shadow-soft ml-auto"
             >
               <Plus size={18} />
               <span>Register New Device</span>
@@ -76,7 +76,7 @@ export function DevicesListPage() {
         </div>
 
         {isLoading || !data ? (
-          <div className="h-64 bg-surface-container border border-outline-variant animate-pulse" />
+          <div className="h-64 glass-card rounded-xl animate-pulse" />
         ) : data.items.length === 0 ? (
           <EmptyState
             title="No devices registered yet"

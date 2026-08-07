@@ -1,68 +1,90 @@
 @import "tailwindcss";
 @import "./theme/fonts.css";
 
-/* Theme tokens — 1:1 transcription of DESIGN.md's YAML front-matter
-   (src/tokens/design-tokens.json is the same data, kept as the diffable
-   source of truth). Never eyeball a value from screen.png; if a screen
-   needs something not listed here, that's a gap to flag back, not a
-   value to invent. */
+/* Light/glass design system — replaces the earlier dark-industrial
+   ("Zgnis") token set entirely per the redesign brief. Same token
+   *names* as before (so every existing component that references
+   bg-surface-container, text-on-surface, font-data-mono-sm, etc.
+   restyles automatically) but new values throughout: sky-blue primary,
+   warm amber secondary, soft whites instead of charcoal, one sans
+   family everywhere (no separate mono for numbers), larger radii, soft
+   diffused shadows instead of hard borders. Treat this file as the
+   current source of truth — src/tokens/design-tokens.json mirrors it. */
 @theme {
   /* Colors */
-  --color-surface: #0c1322;
-  --color-surface-dim: #0c1322;
-  --color-surface-bright: #323949;
-  --color-surface-container-lowest: #070e1d;
-  --color-surface-container-low: #141b2b;
-  --color-surface-container: #191f2f;
-  --color-surface-container-high: #232a3a;
-  --color-surface-container-highest: #2e3545;
-  --color-on-surface: #dce2f7;
-  --color-on-surface-variant: #bfc9c3;
-  --color-inverse-surface: #dce2f7;
-  --color-inverse-on-surface: #293040;
-  --color-outline: #89938d;
-  --color-outline-variant: #404944;
-  --color-surface-tint: #95d3ba;
-  --color-primary: #95d3ba;
-  --color-on-primary: #003829;
-  --color-primary-container: #064e3b;
-  --color-on-primary-container: #80bea6;
-  --color-inverse-primary: #2b6954;
-  --color-secondary: #ffb95f;
-  --color-on-secondary: #472a00;
-  --color-secondary-container: #ee9800;
-  --color-on-secondary-container: #5b3800;
-  --color-tertiary: #ffb3ad;
-  --color-on-tertiary: #68000a;
-  --color-tertiary-container: #8e0012;
-  --color-on-tertiary-container: #ff938c;
-  --color-error: #ffb4ab;
-  --color-on-error: #690005;
-  --color-error-container: #93000a;
-  --color-on-error-container: #ffdad6;
-  --color-primary-fixed: #b0f0d6;
-  --color-primary-fixed-dim: #95d3ba;
-  --color-on-primary-fixed: #002117;
-  --color-on-primary-fixed-variant: #0b513d;
-  --color-secondary-fixed: #ffddb8;
-  --color-secondary-fixed-dim: #ffb95f;
-  --color-on-secondary-fixed: #2a1700;
-  --color-on-secondary-fixed-variant: #653e00;
-  --color-tertiary-fixed: #ffdad7;
-  --color-tertiary-fixed-dim: #ffb3ad;
-  --color-on-tertiary-fixed: #410004;
-  --color-on-tertiary-fixed-variant: #930013;
-  --color-background: #0c1322;
-  --color-on-background: #dce2f7;
-  --color-surface-variant: #2e3545;
+  --color-surface: #ffffff;
+  --color-surface-dim: #eef4fb;
+  --color-surface-bright: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #ffffff;
+  --color-surface-container: #ffffff;
+  --color-surface-container-high: #ffffff;
+  --color-surface-container-highest: #f3f8fd;
+  --color-on-surface: #1e2a3a;
+  --color-on-surface-variant: #64748b;
+  --color-inverse-surface: #1e2a3a;
+  --color-inverse-on-surface: #ffffff;
+  --color-outline: #c7d7e6;
+  --color-outline-variant: #e3ecf5;
+  --color-surface-tint: #2f8fe0;
 
-  /* Typography */
-  --font-body-base: "Public Sans", sans-serif;
-  --font-headline-lg: "Public Sans", sans-serif;
-  --font-headline-md: "Public Sans", sans-serif;
-  --font-label-caps: "Public Sans", sans-serif;
-  --font-data-mono-sm: "JetBrains Mono", monospace;
-  --font-data-display-lg: "JetBrains Mono", monospace;
+  --color-primary: #2f8fe0;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #dceefc;
+  --color-on-primary-container: #0b4f7a;
+  --color-inverse-primary: #8fc7f2;
+
+  --color-secondary: #f2a93b;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #fdecc8;
+  --color-on-secondary-container: #7a4a06;
+
+  /* New: trend/status semantics distinct from primary (sky blue is used
+     for actions/charts/active-nav, not "good" — a positive KPI trend
+     needs its own green, same idea for negative). */
+  --color-success: #1a9c6b;
+  --color-on-success: #ffffff;
+  --color-success-container: #dcf5ea;
+  --color-on-success-container: #0f5c40;
+
+  --color-tertiary: #f2a93b;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #fdecc8;
+  --color-on-tertiary-container: #7a4a06;
+
+  --color-error: #e4483a;
+  --color-on-error: #ffffff;
+  --color-error-container: #fce3e0;
+  --color-on-error-container: #8a2318;
+
+  --color-primary-fixed: #dceefc;
+  --color-primary-fixed-dim: #2f8fe0;
+  --color-on-primary-fixed: #0b4f7a;
+  --color-on-primary-fixed-variant: #0b4f7a;
+  --color-secondary-fixed: #fdecc8;
+  --color-secondary-fixed-dim: #f2a93b;
+  --color-on-secondary-fixed: #7a4a06;
+  --color-on-secondary-fixed-variant: #7a4a06;
+  --color-tertiary-fixed: #fdecc8;
+  --color-tertiary-fixed-dim: #f2a93b;
+  --color-on-tertiary-fixed: #7a4a06;
+  --color-on-tertiary-fixed-variant: #7a4a06;
+
+  --color-background: #eef4fb;
+  --color-on-background: #1e2a3a;
+  --color-surface-variant: #e3ecf5;
+
+  /* Typography — one sans family everywhere now, including what were
+     mono-only "data" tokens (see App.tsx-level note: this platform no
+     longer enforces a distinct monospace font for numeric/ID values —
+     that was the previous dark-industrial system's rule, deliberately
+     dropped in this redesign, not an oversight). */
+  --font-body-base: "Plus Jakarta Sans", sans-serif;
+  --font-headline-lg: "Plus Jakarta Sans", sans-serif;
+  --font-headline-md: "Plus Jakarta Sans", sans-serif;
+  --font-label-caps: "Plus Jakarta Sans", sans-serif;
+  --font-data-mono-sm: "Plus Jakarta Sans", sans-serif;
+  --font-data-display-lg: "Plus Jakarta Sans", sans-serif;
 
   --text-body-base: 14px;
   --text-body-base--line-height: 20px;
@@ -76,32 +98,36 @@
   --text-headline-md: 24px;
   --text-headline-md--line-height: 32px;
   --text-headline-md--letter-spacing: -0.01em;
-  --text-headline-md--font-weight: 600;
+  --text-headline-md--font-weight: 700;
 
   --text-label-caps: 11px;
   --text-label-caps--line-height: 16px;
-  --text-label-caps--letter-spacing: 0.06em;
-  --text-label-caps--font-weight: 700;
+  --text-label-caps--letter-spacing: 0.04em;
+  --text-label-caps--font-weight: 600;
 
-  --text-data-mono-sm: 12px;
-  --text-data-mono-sm--line-height: 16px;
-  --text-data-mono-sm--font-weight: 500;
+  --text-data-mono-sm: 13px;
+  --text-data-mono-sm--line-height: 18px;
+  --text-data-mono-sm--font-weight: 600;
 
-  --text-data-display-lg: 36px;
+  --text-data-display-lg: 34px;
   --text-data-display-lg--line-height: 40px;
-  --text-data-display-lg--letter-spacing: -0.04em;
-  --text-data-display-lg--font-weight: 600;
+  --text-data-display-lg--letter-spacing: -0.02em;
+  --text-data-display-lg--font-weight: 700;
 
-  /* Radius — YAML front-matter's scale (canonical), NOT the code.html
-     files' shifted scale (see Frontend Slice 1 plan, Finding: radius
-     mismatch). Status pills use `full` and must render as an actual
-     pill, matching DESIGN.md's own "fully rounded" rule. */
-  --radius-sm: 0.125rem;
-  --radius-DEFAULT: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
+  /* Radius — soft, rounded geometry throughout; cards land in the
+     20-24px range the brief calls for. */
+  --radius-sm: 0.5rem;
+  --radius-DEFAULT: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.125rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
   --radius-full: 9999px;
+
+  /* Soft diffused shadows instead of the old hard-border industrial
+     look — used on glass cards. */
+  --shadow-soft: 0 12px 32px -8px rgb(30 58 95 / 0.12);
+  --shadow-glass: 0 8px 24px -6px rgb(30 58 95 / 0.10), 0 1px 2px rgb(30 58 95 / 0.06);
 
   /* Spacing */
   --spacing-grid-margin: 24px;
@@ -111,6 +137,30 @@
   --spacing-density-base: 12px;
 }
 
+/* Photographic backdrop (solar panels / sky / greenery) sits fixed
+   behind everything; glass cards float translucently over it rather
+   than filling the viewport with flat color. A layered CSS gradient
+   stands in for a real photo for now — swap in an actual licensed
+   photograph at .app-backdrop's background-image without touching any
+   component, since every page just sits on top of this one layer. */
 body {
-  @apply bg-background text-on-background font-body-base antialiased;
+  @apply text-on-background font-body-base antialiased;
+  background-color: #eef4fb;
+}
+
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 15% 15%, rgb(255 255 255 / 0.5), transparent 45%),
+    linear-gradient(160deg, #bfe0f7 0%, #eaf6ec 55%, #dff0e3 100%);
+}
+
+.glass-card {
+  background-color: rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgb(255 255 255 / 0.6);
+  box-shadow: var(--shadow-glass);
 }

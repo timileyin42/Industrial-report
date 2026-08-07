@@ -18,7 +18,7 @@ export function EmptyState({
   return (
     <div className="flex-1 flex items-center justify-center p-grid-margin">
       <div className="w-full max-w-lg text-center flex flex-col items-center">
-        <div className="mb-8 w-24 h-24 bg-surface-container border border-outline-variant flex items-center justify-center rounded-xl text-outline">
+        <div className="mb-8 w-24 h-24 glass-card flex items-center justify-center rounded-2xl text-on-surface-variant">
           {icon ?? <Factory size={48} />}
         </div>
         <h2 className="font-headline-lg text-headline-lg text-on-background mb-3">{title}</h2>

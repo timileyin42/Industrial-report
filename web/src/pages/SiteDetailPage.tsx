@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { Factory, BarChart3 } from "lucide-react";
+import { Factory, BarChart3, Pencil } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { LineChart } from "../components/charts/LineChart";
@@ -10,7 +11,8 @@ import { AccessDenied } from "../components/feedback/AccessDenied";
 import { ExportButton } from "../components/export/ExportButton";
 import { AsyncExportButton } from "../components/export/AsyncExportButton";
 import { MapEmbed } from "../components/map/MapEmbed";
-import { getSite } from "../api/sites";
+import { useAuth } from "../auth/AuthContext";
+import { getSite, updateSiteCountry } from "../api/sites";
 import { listSiteTelemetry } from "../api/telemetry";
 import { downloadSiteTelemetryCSV, downloadSiteSummaryCSV } from "../api/exports";
 import { ApiError } from "../api/types";
@@ -19,11 +21,32 @@ import { ApiError } from "../api/types";
 // design/site_telemetry_lagos_central_hub/code.html.
 export function SiteDetailPage() {
   const { siteId } = useParams<{ siteId: string }>();
+  const { session } = useAuth();
+  const isOperator = session?.role === "operator";
+  const queryClient = useQueryClient();
+  const [editingCountry, setEditingCountry] = useState(false);
+  const [countryInput, setCountryInput] = useState("");
+  const [countryError, setCountryError] = useState<string | null>(null);
 
   const siteQuery = useQuery({
     queryKey: ["site", siteId],
     queryFn: () => getSite(siteId!),
     enabled: !!siteId,
+  });
+
+  // Every site created before migrations/0010_site_country.sql was
+  // backfilled to 'NG' — this is the only place that guess can be
+  // corrected, since there's no general site-edit form yet.
+  const countryMutation = useMutation({
+    mutationFn: (country: string) => updateSiteCountry(siteId!, country),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["site", siteId] });
+      setEditingCountry(false);
+      setCountryError(null);
+    },
+    onError: (err) => {
+      setCountryError(err instanceof ApiError ? err.message : "Couldn't update the country. Try again.");
+    },
   });
 
   const telemetryQuery = useQuery({
@@ -47,7 +70,7 @@ export function SiteDetailPage() {
       <>
         <TopNav title="Site" />
         <div className="flex-1 p-grid-margin">
-          <div className="h-40 bg-surface-container border border-outline-variant animate-pulse" />
+          <div className="h-40 glass-card rounded-xl animate-pulse" />
         </div>
       </>
     );
@@ -62,10 +85,10 @@ export function SiteDetailPage() {
     <>
       <TopNav title={site.name ?? site.site_id} />
       <div className="flex-1 p-grid-margin space-y-8">
-        <div className="bg-surface-container-high p-6 rounded-lg border border-primary/30">
+        <div className="glass-card rounded-2xl p-6">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded bg-primary-container flex items-center justify-center text-primary">
+              <div className="w-12 h-12 rounded-xl bg-primary-container flex items-center justify-center text-primary">
                 <Factory size={28} />
               </div>
               <div>
@@ -77,11 +100,56 @@ export function SiteDetailPage() {
             </div>
             <Link
               to={`/app/sites/${site.site_id}/analytics`}
-              className="flex items-center gap-2 bg-primary-container hover:bg-on-primary-fixed-variant text-on-primary-container font-bold px-4 py-2 rounded transition-colors whitespace-nowrap"
+              className="flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-bold px-4 py-2 rounded-full transition-colors shadow-soft whitespace-nowrap"
             >
               <BarChart3 size={16} />
               <span>View Analytics</span>
             </Link>
+          </div>
+
+          <div className="flex items-center gap-2 text-[12px] text-on-surface-variant">
+            <span className="uppercase font-label-caps text-label-caps">Grid country:</span>
+            {editingCountry ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  countryMutation.mutate(countryInput.toUpperCase());
+                }}
+              >
+                <input
+                  autoFocus
+                  maxLength={2}
+                  value={countryInput}
+                  onChange={(e) => setCountryInput(e.target.value.toUpperCase())}
+                  className="w-16 bg-white/70 border border-outline-variant rounded-lg px-2 py-1 font-data-mono-sm text-data-mono-sm uppercase focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={countryMutation.isPending}
+                  className="text-primary font-semibold disabled:opacity-60"
+                >
+                  Save
+                </button>
+                <button type="button" onClick={() => setEditingCountry(false)} className="text-on-surface-variant">
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                className="font-data-mono-sm text-data-mono-sm text-on-surface flex items-center gap-1"
+                onClick={() => {
+                  setCountryInput(site.country);
+                  setEditingCountry(true);
+                }}
+                disabled={!isOperator}
+              >
+                {site.country}
+                {isOperator && <Pencil size={12} className="text-on-surface-variant" />}
+              </button>
+            )}
+            {countryError && <span className="text-error">{countryError}</span>}
           </div>
         </div>
 
@@ -111,28 +179,28 @@ export function SiteDetailPage() {
           />
         </div>
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
-          <div className="p-6 border-b border-outline-variant flex justify-between items-center">
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/60 flex justify-between items-center">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">
               Power Output
             </span>
           </div>
           <div className="h-[260px] p-6">
             {telemetryQuery.isLoading ? (
-              <div className="h-full bg-surface-container animate-pulse" />
+              <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
             ) : points.length === 0 ? (
               <EmptyState
                 title="No telemetry yet"
                 body="This site hasn't reported any readings yet. Once its device starts publishing, data will appear here."
               />
             ) : (
-              <LineChart points={chartPoints} color="#ffb95f" />
+              <LineChart points={chartPoints} color="#f2a93b" />
             )}
           </div>
         </div>
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
-          <div className="p-6 border-b border-outline-variant">
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/60">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Location</span>
           </div>
           <div className="h-[300px]">

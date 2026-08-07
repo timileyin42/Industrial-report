@@ -28,7 +28,16 @@ export function AddSitePage() {
   // (see internal/httpapi/site_handlers.go), but a real operator adding
   // a real site almost always wants their own timezone pre-filled.
   const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const [timezoneTouched, setTimezoneTouched] = useState(false);
   const [cohortId, setCohortId] = useState("");
+  // Resolves which grid emission factor this site's CO2-offset reporting
+  // uses (backend migrations/0010_site_country.sql) — required, no
+  // default. Deliberately not pre-filled off browser locale the way
+  // timezone used to be: a browser's locale is a poor proxy for which
+  // grid a solar site is actually connected to. Auto-filled from the map
+  // pick instead (see LocationPicker's onChange below), same as address.
+  const [country, setCountry] = useState("");
+  const [countryTouched, setCountryTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -47,6 +56,7 @@ export function AddSitePage() {
         system_size_kw: systemSizeKw ? Number(systemSizeKw) : undefined,
         timezone,
         cohort_id: cohortId || undefined,
+        country,
       });
       navigate(`/app/sites/${site.site_id}`);
     } catch (err) {
@@ -57,10 +67,11 @@ export function AddSitePage() {
   }
 
   const inputClass =
-    "w-full bg-surface-dim border border-outline-variant text-on-surface font-body-base rounded-sm py-2.5 px-4 focus:border-primary focus:ring-1 focus:ring-primary outline-none placeholder:text-outline-variant/50";
-  const monoInputClass =
-    "w-full bg-surface-dim border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm rounded-sm py-2.5 px-4 focus:border-primary focus:ring-1 focus:ring-primary outline-none placeholder:text-outline-variant/50";
+    "w-full bg-white/70 border border-outline-variant text-on-surface font-body-base rounded-xl py-2.5 px-4 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none placeholder:text-on-surface-variant/50";
+  const monoInputClass = inputClass;
   const labelClass = "block text-label-caps font-label-caps text-on-surface-variant mb-2";
+  const cardClass = "glass-card rounded-2xl p-6";
+  const cardHeaderClass = "text-label-caps font-label-caps text-primary border-b border-outline-variant/60 pb-3 mb-6 uppercase tracking-[0.1em]";
 
   return (
     <>
@@ -68,8 +79,8 @@ export function AddSitePage() {
       <div className="flex-1 p-grid-margin max-w-5xl w-full">
         <form className="space-y-gutter" onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
-            <div className="md:col-span-2 bg-surface-container p-6 border border-outline-variant rounded-lg">
-              <h3 className="text-label-caps font-label-caps text-primary border-b border-outline-variant pb-3 mb-6 uppercase tracking-[0.1em]">
+            <div className={`md:col-span-2 ${cardClass}`}>
+              <h3 className={cardHeaderClass}>
                 General Information
               </h3>
               <div className="space-y-5">
@@ -108,29 +119,35 @@ export function AddSitePage() {
                 </div>
               </div>
             </div>
-            <div className="bg-surface-container p-6 border border-outline-variant rounded-lg">
-              <h3 className="text-label-caps font-label-caps text-primary border-b border-outline-variant pb-3 mb-6 uppercase tracking-[0.1em]">
+            <div className={cardClass}>
+              <h3 className={cardHeaderClass}>
                 Geo-Location
               </h3>
               <LocationPicker
                 lat={gpsLat}
                 lng={gpsLng}
-                onChange={(lat, lng, resolvedAddress) => {
+                onChange={(lat, lng, resolvedAddress, resolvedCountry, resolvedTimezone) => {
                   setGpsLat(lat);
                   setGpsLng(lng);
                   // Only auto-fill if the operator hasn't typed their own
-                  // address — a search/click result shouldn't clobber a
-                  // deliberate manual entry.
+                  // value for that field — a search/click/drag result
+                  // shouldn't clobber a deliberate manual entry.
                   if (resolvedAddress && !addressTouched) {
                     setAddress(resolvedAddress);
+                  }
+                  if (resolvedCountry && !countryTouched) {
+                    setCountry(resolvedCountry);
+                  }
+                  if (resolvedTimezone && !timezoneTouched) {
+                    setTimezone(resolvedTimezone);
                   }
                 }}
               />
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
-            <div className="bg-surface-container p-6 border border-outline-variant rounded-lg">
-              <h3 className="text-label-caps font-label-caps text-primary border-b border-outline-variant pb-3 mb-6 uppercase tracking-[0.1em]">
+            <div className={cardClass}>
+              <h3 className={cardHeaderClass}>
                 Technical Specs
               </h3>
               <div className="grid grid-cols-2 gap-4">
@@ -156,14 +173,42 @@ export function AddSitePage() {
                 </div>
               </div>
             </div>
-            <div className="bg-surface-container p-6 border border-outline-variant rounded-lg">
-              <h3 className="text-label-caps font-label-caps text-primary border-b border-outline-variant pb-3 mb-6 uppercase tracking-[0.1em]">
+            <div className={cardClass}>
+              <h3 className={cardHeaderClass}>
                 System Configuration
               </h3>
               <div className="space-y-5">
                 <div>
                   <label className={labelClass}>TIMEZONE</label>
-                  <input className={inputClass} value={timezone} onChange={(e) => setTimezone(e.target.value)} />
+                  <input
+                    className={inputClass}
+                    value={timezone}
+                    onChange={(e) => {
+                      setTimezoneTouched(true);
+                      setTimezone(e.target.value);
+                    }}
+                  />
+                  <p className="text-[10px] text-on-surface-variant mt-1.5">
+                    Auto-fills from the map pick — edit here to override.
+                  </p>
+                </div>
+                <div>
+                  <label className={labelClass}>COUNTRY</label>
+                  <input
+                    className={monoInputClass}
+                    placeholder="e.g. NG, GB"
+                    required
+                    maxLength={2}
+                    value={country}
+                    onChange={(e) => {
+                      setCountryTouched(true);
+                      setCountry(e.target.value.toUpperCase());
+                    }}
+                  />
+                  <p className="text-[10px] text-on-surface-variant mt-1.5">
+                    2-letter code — auto-fills from the map pick. Determines which grid emission factor this
+                    site's CO2-offset reporting uses.
+                  </p>
                 </div>
                 <div>
                   <label className={labelClass}>COHORT / PROJECT (optional)</label>
@@ -175,20 +220,20 @@ export function AddSitePage() {
 
           {error && <p className="font-label-caps text-label-caps text-error">{error}</p>}
 
-          <div className="flex items-center justify-end gap-4 pt-4 border-t border-outline-variant">
+          <div className="flex items-center justify-end gap-4 pt-4">
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="px-8 py-2.5 border border-outline-variant text-on-surface font-label-caps tracking-widest rounded-sm hover:bg-surface-container-highest uppercase"
+              className="px-8 py-2.5 glass-card rounded-full text-on-surface hover:text-primary transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-10 py-2.5 bg-primary-container text-primary font-label-caps tracking-widest rounded-sm border border-primary/20 hover:brightness-110 uppercase disabled:opacity-70"
+              className="px-10 py-2.5 bg-primary text-on-primary font-semibold rounded-full hover:opacity-90 transition-all disabled:opacity-70 shadow-soft"
             >
-              {isSubmitting ? "Saving..." : "Save Site"}
+              {isSubmitting ? "Saving…" : "Save Site"}
             </button>
           </div>
         </form>

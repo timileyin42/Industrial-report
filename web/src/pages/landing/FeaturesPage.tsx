@@ -1,7 +1,7 @@
 import { Share2, Database, BarChart3, RadioTower, TrendingUp, Monitor } from "lucide-react";
 import { LandingNav } from "./LandingNav";
 import { LandingFooter } from "./LandingFooter";
-import performanceViz from "../../assets/landing/site-power-chart.png";
+import performanceViz from "../../assets/landing/dashboard-light-preview.png";
 
 // Reference: design/landing_features/code.html.
 export function FeaturesPage() {

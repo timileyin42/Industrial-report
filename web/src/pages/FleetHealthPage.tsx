@@ -91,7 +91,7 @@ export function FleetHealthPage() {
         </div>
 
         {isLoading && rows.length === 0 ? (
-          <div className="h-64 bg-surface-container border border-outline-variant animate-pulse" />
+          <div className="h-64 glass-card rounded-xl animate-pulse" />
         ) : rows.length === 0 ? (
           <EmptyState title="No sites yet" body="Site health will appear here once sites and devices are registered." />
         ) : (
@@ -102,7 +102,7 @@ export function FleetHealthPage() {
                 <button
                   onClick={() => setCursor(data.sites.next_cursor)}
                   disabled={isLoading}
-                  className="bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant text-on-surface font-body-base px-6 py-2 rounded transition-colors disabled:opacity-60"
+                  className="glass-card rounded-full text-on-surface hover:text-primary font-body-base px-6 py-2 transition-colors disabled:opacity-60"
                 >
                   {isLoading ? "Loading…" : "Load more"}
                 </button>

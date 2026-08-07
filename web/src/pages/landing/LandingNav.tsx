@@ -5,7 +5,7 @@ import { Logo } from "../../components/brand/Logo";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   [
-    "font-body-base text-body-base transition-colors duration-200",
+    "font-body-base text-body-base transition-colors duration-200 drop-shadow-sm",
     isActive ? "text-primary font-bold border-b-2 border-primary pb-1" : "text-on-surface-variant hover:text-primary",
   ].join(" ");
 
@@ -19,13 +19,21 @@ const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
 // two slightly different nav treatments (logo+wordmark on Home, text-only
 // wordmark on Features/Solutions/Company); unified here rather than
 // carrying that inconsistency into the built site.
+//
+// Deliberately no background/blur/border on the bar itself: on Home it
+// sits directly over the hero video (the whole point — video fills the
+// page edge-to-edge, nav floats over it), and on Features/Solutions/
+// Company it sits over the same light page background everything else
+// uses, so dark text stays legible there too without a bar of its own.
+// A drop-shadow stands in for a background as the legibility safety net
+// against brighter video frames.
 export function LandingNav() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <nav className="fixed top-0 w-full z-50 bg-surface-container-lowest/90 backdrop-blur-md border-b border-outline-variant">
+    <nav className="fixed top-0 w-full z-50">
       <div className="max-w-7xl mx-auto px-grid-margin flex justify-between items-center h-20">
-        <Link to="/" className="flex items-center" onClick={() => setMenuOpen(false)}>
+        <Link to="/" className="flex items-center drop-shadow-sm" onClick={() => setMenuOpen(false)}>
           <Logo />
         </Link>
         <div className="hidden md:flex items-center gap-8">
@@ -36,13 +44,13 @@ export function LandingNav() {
         <div className="hidden md:flex items-center gap-4">
           <Link
             to="/login"
-            className="bg-primary-container hover:bg-inverse-primary text-on-primary-container font-semibold px-4 py-2 rounded transition-colors"
+            className="bg-primary-container hover:bg-inverse-primary text-on-primary-container font-semibold px-4 py-2 rounded shadow-soft transition-colors"
           >
             Sign In
           </Link>
         </div>
         <button
-          className="md:hidden text-on-surface"
+          className="md:hidden text-on-surface drop-shadow-sm"
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           onClick={() => setMenuOpen((v) => !v)}
         >

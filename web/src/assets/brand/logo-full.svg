@@ -9,7 +9,8 @@
     <circle cx="39.5" cy="8"  r="3.4" fill="#8be0ad"/>
   </g>
 
-  <!-- Wordmark -->
-  <text x="98" y="52" font-size="34" font-weight="700" fill="#ffffff">Clean Energy</text>
-  <text x="98" y="88" font-size="34" font-weight="700" fill="#ffffff">Analytics</text>
+  <!-- Wordmark — dark fill for the light/glass theme's white/near-white
+       surfaces (was white, meant for the earlier dark nav). -->
+  <text x="98" y="52" font-size="34" font-weight="700" fill="#1e2a3a">Clean Energy</text>
+  <text x="98" y="88" font-size="34" font-weight="700" fill="#1e2a3a">Analytics</text>
 </svg>

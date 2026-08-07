@@ -58,11 +58,11 @@ export function EmissionFactorSettingsPage() {
     <>
       <TopNav title="Emission Factor" />
       <div className="flex-1 p-grid-margin space-y-8 max-w-2xl">
-        <div className="bg-surface-container border border-outline-variant p-6">
+        <div className="glass-card rounded-2xl p-6">
           <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Current Factor</span>
           <div className="mt-4">
             {currentQuery.isLoading ? (
-              <div className="h-16 bg-surface-container-high animate-pulse" />
+              <div className="h-16 bg-surface-dim rounded-xl animate-pulse" />
             ) : notConfigured ? (
               <EmptyState
                 icon={<Leaf size={40} />}
@@ -84,7 +84,7 @@ export function EmissionFactorSettingsPage() {
           </div>
         </div>
 
-        <form className="bg-surface-container border border-outline-variant p-6 space-y-5" onSubmit={handleSubmit}>
+        <form className="glass-card rounded-2xl p-6 space-y-5" onSubmit={handleSubmit}>
           <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Set New Factor</span>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
             <div className="space-y-2">
@@ -99,7 +99,7 @@ export function EmissionFactorSettingsPage() {
                 required
                 value={kgCo2PerKwh}
                 onChange={(e) => setKgCo2PerKwh(e.target.value)}
-                className="w-full bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm px-4 py-3 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                className="w-full bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-3 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
             <div className="space-y-2">
@@ -113,7 +113,7 @@ export function EmissionFactorSettingsPage() {
                 placeholder="e.g. NG, US, GB"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
-                className="w-full bg-background border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-3 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                className="w-full bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-3 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
             <div className="space-y-2">
@@ -127,7 +127,7 @@ export function EmissionFactorSettingsPage() {
                 placeholder="e.g. National grid average, IEA 2025"
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
-                className="w-full bg-background border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-3 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                className="w-full bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-3 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
             <div className="space-y-2">
@@ -140,7 +140,7 @@ export function EmissionFactorSettingsPage() {
                 required
                 value={effectiveFrom}
                 onChange={(e) => setEffectiveFrom(e.target.value)}
-                className="w-full bg-background border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm px-4 py-3 rounded focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                className="w-full bg-white/70 border border-outline-variant text-on-surface font-body-base text-body-base px-4 py-3 rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
           </div>
@@ -148,9 +148,9 @@ export function EmissionFactorSettingsPage() {
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="bg-primary-container hover:bg-on-primary-fixed-variant text-on-primary-container font-bold py-3 px-6 rounded transition-all disabled:opacity-70"
+            className="bg-primary hover:opacity-90 text-on-primary font-bold py-3 px-6 rounded-full transition-all disabled:opacity-70 shadow-soft"
           >
-            {mutation.isPending ? "Saving..." : "Save Emission Factor"}
+            {mutation.isPending ? "Saving…" : "Save Emission Factor"}
           </button>
         </form>
       </div>

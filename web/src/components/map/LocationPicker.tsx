@@ -1,16 +1,35 @@
 import { useEffect, useRef, useState } from "react";
+import tzLookup from "tz-lookup";
 import { loadGoogleMaps } from "../../lib/googleMaps";
 
 interface LocationPickerProps {
   lat: number | null;
   lng: number | null;
-  onChange: (lat: number, lng: number, address?: string) => void;
+  onChange: (lat: number, lng: number, address?: string, country?: string, timezone?: string) => void;
+}
+
+// Pulls the ISO 3166-1 alpha-2 country code out of a Geocoder result —
+// the same geocode call already made for the address, no extra request.
+function countryFromGeocodeResult(result: google.maps.GeocoderResult): string | undefined {
+  const component = result.address_components.find((c) => c.types.includes("country"));
+  return component?.short_name;
+}
+
+// tz-lookup resolves an IANA timezone from lat/lng entirely client-side —
+// no network call, no Google Time Zone API/key needed for this.
+function timezoneFromLatLng(lat: number, lng: number): string | undefined {
+  try {
+    return tzLookup(lat, lng);
+  } catch {
+    // Throws for coordinates outside any known zone (e.g. open ocean) —
+    // leave timezone unresolved rather than guessing.
+    return undefined;
+  }
 }
 
 const inputClass =
-  "w-full bg-surface-dim border border-outline-variant text-on-surface font-body-base rounded-sm py-2.5 px-4 focus:border-primary focus:ring-1 focus:ring-primary outline-none placeholder:text-outline-variant/50";
-const monoInputClass =
-  "w-full bg-surface-dim border border-outline-variant text-on-surface font-data-mono-sm text-data-mono-sm rounded-sm py-2.5 px-4 focus:border-primary focus:ring-1 focus:ring-primary outline-none placeholder:text-outline-variant/50";
+  "w-full bg-white/70 border border-outline-variant text-on-surface font-body-base rounded-xl py-2.5 px-4 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none placeholder:text-on-surface-variant/50";
+const monoInputClass = inputClass;
 
 // Search a place or click the map to drop a pin — replaces hand-typed
 // lat/lng. Falls back to plain numeric inputs (the old behavior) if
@@ -48,7 +67,7 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
           markerRef.current = new google.maps.Marker({ position: center, map, draggable: true });
           markerRef.current.addListener("dragend", () => {
             const pos = markerRef.current!.getPosition();
-            if (pos) onChange(pos.lat(), pos.lng());
+            if (pos) placeMarker(pos.lat(), pos.lng());
           });
         }
 
@@ -59,7 +78,7 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
 
         if (searchInputRef.current) {
           const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current, {
-            fields: ["geometry", "formatted_address"],
+            fields: ["geometry", "formatted_address", "address_components"],
           });
           autocomplete.addListener("place_changed", () => {
             const place = autocomplete.getPlace();
@@ -67,7 +86,10 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
             if (!loc) return;
             map.panTo(loc);
             map.setZoom(14);
-            placeMarker(loc.lat(), loc.lng(), place.formatted_address);
+            const country = place.address_components
+              ? countryFromGeocodeResult({ address_components: place.address_components } as google.maps.GeocoderResult)
+              : undefined;
+            placeMarker(loc.lat(), loc.lng(), place.formatted_address, country);
           });
         }
       })
@@ -82,7 +104,7 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function placeMarker(newLat: number, newLng: number, knownAddress?: string) {
+  function placeMarker(newLat: number, newLng: number, knownAddress?: string, knownCountry?: string) {
     const map = mapRef.current;
     if (!map) return;
     const position = { lat: newLat, lng: newLng };
@@ -92,19 +114,24 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
       markerRef.current = new google.maps.Marker({ position, map, draggable: true });
       markerRef.current.addListener("dragend", () => {
         const pos = markerRef.current!.getPosition();
-        if (pos) onChange(pos.lat(), pos.lng());
+        if (pos) placeMarker(pos.lat(), pos.lng());
       });
     }
 
-    if (knownAddress) {
-      onChange(newLat, newLng, knownAddress);
+    // Timezone is resolved client-side regardless of source (search
+    // result, click, or drag) — cheap and synchronous, no reason to wait
+    // on a geocode round-trip for it.
+    const timezone = timezoneFromLatLng(newLat, newLng);
+
+    if (knownAddress || knownCountry) {
+      onChange(newLat, newLng, knownAddress, knownCountry, timezone);
       return;
     }
     geocoderRef.current?.geocode({ location: position }, (results, status) => {
       if (status === "OK" && results?.[0]) {
-        onChange(newLat, newLng, results[0].formatted_address);
+        onChange(newLat, newLng, results[0].formatted_address, countryFromGeocodeResult(results[0]), timezone);
       } else {
-        onChange(newLat, newLng);
+        onChange(newLat, newLng, undefined, undefined, timezone);
       }
     });
   }
@@ -120,7 +147,10 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
             type="number"
             step="any"
             value={lat ?? ""}
-            onChange={(e) => onChange(Number(e.target.value), lng ?? 0)}
+            onChange={(e) => {
+              const newLat = Number(e.target.value);
+              onChange(newLat, lng ?? 0, undefined, undefined, timezoneFromLatLng(newLat, lng ?? 0));
+            }}
           />
         </div>
         <div>
@@ -131,11 +161,15 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
             type="number"
             step="any"
             value={lng ?? ""}
-            onChange={(e) => onChange(lat ?? 0, Number(e.target.value))}
+            onChange={(e) => {
+              const newLng = Number(e.target.value);
+              onChange(lat ?? 0, newLng, undefined, undefined, timezoneFromLatLng(lat ?? 0, newLng));
+            }}
           />
         </div>
         <p className="col-span-2 text-[10px] text-on-surface-variant">
           Map picker unavailable — set VITE_GOOGLE_MAPS_API_KEY to search or click a location instead of typing coordinates.
+          Country isn't auto-filled without it — enter it manually below.
         </p>
       </div>
     );
@@ -144,7 +178,7 @@ export function LocationPicker({ lat, lng, onChange }: LocationPickerProps) {
   return (
     <div className="space-y-3">
       <input ref={searchInputRef} type="text" placeholder="Search for an address…" className={inputClass} disabled={available !== true} />
-      <div ref={mapDivRef} className="w-full h-[220px] rounded-sm bg-surface-dim border border-outline-variant" />
+      <div ref={mapDivRef} className="w-full h-[220px] rounded-xl bg-surface-dim border border-outline-variant overflow-hidden" />
       {lat != null && lng != null ? (
         <p className="text-[10px] font-data-mono-sm text-data-mono-sm text-on-surface-variant">
           {lat.toFixed(6)}, {lng.toFixed(6)}

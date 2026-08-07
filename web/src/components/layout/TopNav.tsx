@@ -5,9 +5,9 @@ export function TopNav({ title }: { title: string }) {
   const { session } = useAuth();
 
   return (
-    <header className="h-16 flex items-center justify-between px-grid-margin border-b border-outline-variant sticky top-0 bg-background/80 backdrop-blur-md z-40">
-      <h2 className="font-headline-md text-headline-md font-black text-on-surface">{title}</h2>
-      <div className="flex items-center gap-3">
+    <header className="h-20 flex items-center justify-between px-grid-margin sticky top-0 z-40 bg-background/85 backdrop-blur-md">
+      <h2 className="font-headline-md text-headline-md font-bold text-on-surface">{title}</h2>
+      <div className="glass-card rounded-full flex items-center gap-3 pl-4 pr-2 py-2">
         <div className="text-right">
           <p className="font-label-caps text-label-caps text-on-surface leading-none">
             {session?.role === "operator" ? "Operator" : `Site: ${session?.siteId ?? ""}`}

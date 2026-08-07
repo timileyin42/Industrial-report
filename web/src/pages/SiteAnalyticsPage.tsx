@@ -86,7 +86,7 @@ export function SiteAnalyticsPage() {
       <>
         <TopNav title="Analytics" />
         <div className="flex-1 p-grid-margin">
-          <div className="h-40 bg-surface-container border border-outline-variant animate-pulse" />
+          <div className="h-40 glass-card rounded-xl animate-pulse" />
         </div>
       </>
     );
@@ -149,43 +149,43 @@ export function SiteAnalyticsPage() {
           />
         </div>
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
-          <div className="p-6 border-b border-outline-variant">
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/60">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Energy Output</span>
           </div>
           <div className="h-[220px] p-6">
             {energyQuery.isLoading ? (
-              <div className="h-full bg-surface-container animate-pulse" />
+              <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
             ) : energyPoints.length < 2 ? (
               <EmptyState title="Not enough data yet" body="Energy output will chart here once this site has more history." />
             ) : (
-              <LineChart points={energyPoints} color="#95d3ba" />
+              <LineChart points={energyPoints} color="#2f8fe0" />
             )}
           </div>
         </div>
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden">
-          <div className="p-6 border-b border-outline-variant">
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/60">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Specific Yield (kWh/kWp)</span>
           </div>
           <div className="h-[220px] p-6">
             {yieldQuery.isLoading ? (
-              <div className="h-full bg-surface-container animate-pulse" />
+              <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
             ) : yieldQuery.error instanceof ApiError ? (
               <EmptyState title="Specific yield unavailable" body={yieldQuery.error.message} />
             ) : yieldPoints.length < 2 ? (
               <EmptyState title="Not enough data yet" body="Specific yield will chart here once this site has more history." />
             ) : (
-              <LineChart points={yieldPoints} color="#ffb95f" />
+              <LineChart points={yieldPoints} color="#f2a93b" />
             )}
           </div>
         </div>
 
-        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden p-6">
+        <div className="glass-card rounded-2xl overflow-hidden p-6">
           <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Emissions Avoided</span>
           <div className="mt-4">
             {emissionsQuery.isLoading ? (
-              <div className="h-24 bg-surface-container animate-pulse" />
+              <div className="h-24 bg-surface-dim rounded-xl animate-pulse" />
             ) : emissionsUnconfigured ? (
               <EmptyState
                 icon={<Leaf size={48} />}
@@ -195,7 +195,7 @@ export function SiteAnalyticsPage() {
                   isOperator ? (
                     <Link
                       to="/app/settings/emissions"
-                      className="bg-primary-container text-on-primary-container font-bold px-4 py-2 rounded"
+                      className="bg-primary text-on-primary font-bold px-4 py-2 rounded-full shadow-soft"
                     >
                       Configure emission factor
                     </Link>
@@ -208,9 +208,11 @@ export function SiteAnalyticsPage() {
                   {emissionsQuery.data.cumulative_lifetime_co2_tonnes.toFixed(2)}
                 </span>
                 <span className="text-on-surface-variant font-data-mono-sm text-data-mono-sm">t CO2 (lifetime)</span>
-                <span className="text-[10px] text-on-surface-variant ml-4">
-                  Factor: {emissionsQuery.data.emission_factor.kg_co2_per_kwh} kg/kWh ({emissionsQuery.data.emission_factor.country})
-                </span>
+                {emissionsQuery.data.emission_factor && (
+                  <span className="text-[10px] text-on-surface-variant ml-4">
+                    Factor: {emissionsQuery.data.emission_factor.kg_co2_per_kwh} kg/kWh ({emissionsQuery.data.emission_factor.country})
+                  </span>
+                )}
               </div>
             ) : (
               <EmptyState title="Emissions unavailable" body="Couldn't load emissions data right now." />
@@ -219,7 +221,7 @@ export function SiteAnalyticsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
-          <div className="bg-surface-container border border-outline-variant p-6">
+          <div className="glass-card rounded-2xl p-6">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">This Period vs. Last</span>
             <div className="mt-4">
               {historyQuery.isLoading ? (
@@ -244,7 +246,7 @@ export function SiteAnalyticsPage() {
           </div>
 
           {isOperator && (
-            <div className="bg-surface-container border border-outline-variant p-6">
+            <div className="glass-card rounded-2xl p-6">
               <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">This Site vs. Fleet</span>
               <div className="mt-4">
                 {fleetCompareQuery.isLoading ? (
@@ -272,7 +274,7 @@ export function SiteAnalyticsPage() {
             <TriangleAlert size={14} className="text-secondary" /> Anomalies
           </span>
           {anomalyQuery.isLoading ? (
-            <div className="h-32 bg-surface-container border border-outline-variant animate-pulse" />
+            <div className="h-32 glass-card rounded-xl animate-pulse" />
           ) : !anomalyQuery.data || anomalyQuery.data.flags.length === 0 ? (
             <EmptyState title="No anomalies flagged" body="No significant drop below this site's trailing baseline right now." />
           ) : (

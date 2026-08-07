@@ -39,9 +39,8 @@ export function RegisterDevicePage() {
   }
 
   const inputClass =
-    "w-full bg-background border border-outline-variant p-3 font-body-base text-on-surface rounded focus:ring-1 focus:ring-primary outline-none";
-  const monoInputClass =
-    "w-full bg-background border border-outline-variant p-3 font-data-mono-sm text-data-mono-sm text-on-surface rounded focus:ring-1 focus:ring-primary outline-none";
+    "w-full bg-white/70 border border-outline-variant p-3 font-body-base text-on-surface rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none";
+  const monoInputClass = inputClass;
   const labelClass = "block font-label-caps text-on-surface-variant mb-2";
 
   if (result) {
@@ -49,7 +48,7 @@ export function RegisterDevicePage() {
       <>
         <TopNav title="Device Registered" />
         <div className="flex-1 p-grid-margin max-w-2xl w-full">
-          <div className="bg-surface-container border border-primary/40 rounded p-6 space-y-6">
+          <div className="glass-card rounded-2xl p-6 space-y-6">
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} className="text-secondary mt-0.5" />
               <p className="font-body-base text-on-surface-variant">
@@ -65,7 +64,7 @@ export function RegisterDevicePage() {
             <div>
               <p className={labelClass}>DEVICE SECRET</p>
               <div className="flex gap-2">
-                <code className="flex-1 bg-background border border-outline-variant p-3 rounded font-data-mono-sm text-data-mono-sm text-on-surface break-all">
+                <code className="flex-1 bg-white/70 border border-outline-variant p-3 rounded-xl font-data-mono-sm text-data-mono-sm text-on-surface break-all">
                   {result.secret}
                 </code>
                 <button
@@ -74,17 +73,17 @@ export function RegisterDevicePage() {
                     navigator.clipboard.writeText(result.secret);
                     setCopied(true);
                   }}
-                  className="p-3 bg-surface-container-highest border border-outline-variant hover:border-primary rounded transition-all"
+                  className="p-3 glass-card rounded-xl hover:text-primary transition-all"
                   title="Copy to clipboard"
                 >
                   {copied ? <Check size={20} className="text-primary" /> : <Copy size={20} />}
                 </button>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant">
+            <div className="flex justify-end gap-3 pt-4">
               <Link
                 to="/app/devices"
-                className="px-6 py-2.5 bg-primary-container text-primary font-label-caps rounded border border-primary/30 hover:bg-primary/20 transition-all"
+                className="px-6 py-2.5 bg-primary hover:opacity-90 text-on-primary font-semibold rounded-full transition-all shadow-soft"
               >
                 Done
               </Link>
@@ -100,7 +99,7 @@ export function RegisterDevicePage() {
       <TopNav title="Register Device" />
       <div className="flex-1 p-grid-margin max-w-2xl w-full">
         <form className="space-y-6" onSubmit={handleSubmit}>
-          <section className="bg-surface-container border border-outline-variant p-6 rounded">
+          <section className="glass-card rounded-2xl p-6">
             <h3 className="font-label-caps text-on-surface tracking-wider border-b border-outline-variant/30 pb-4 mb-6">
               DEVICE IDENTITY
             </h3>
@@ -133,7 +132,7 @@ export function RegisterDevicePage() {
               </div>
             </div>
           </section>
-          <section className="bg-surface-container border border-outline-variant p-6 rounded">
+          <section className="glass-card rounded-2xl p-6">
             <h3 className="font-label-caps text-on-surface tracking-wider border-b border-outline-variant/30 pb-4 mb-6">
               DEPLOYMENT CONTEXT
             </h3>
@@ -158,9 +157,9 @@ export function RegisterDevicePage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-8 py-2.5 bg-primary-container text-primary font-bold border border-primary hover:bg-primary hover:text-on-primary transition-all rounded disabled:opacity-70"
+              className="px-8 py-2.5 bg-primary hover:opacity-90 text-on-primary font-bold transition-all rounded-full disabled:opacity-70 shadow-soft"
             >
-              {isSubmitting ? "Registering..." : "COMPLETE REGISTRATION"}
+              {isSubmitting ? "Registering…" : "COMPLETE REGISTRATION"}
             </button>
           </div>
         </form>
