@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { Logo } from "../../components/brand/Logo";
 
+const footerLinkClass = "text-on-surface-variant hover:text-primary transition-colors font-body-base text-body-base";
+
 export function LandingFooter() {
   return (
     <footer className="w-full bg-surface-container-lowest border-t border-outline-variant py-grid-margin">
@@ -14,9 +16,9 @@ export function LandingFooter() {
           </span>
         </div>
         <div className="flex gap-6">
-          <a className="text-on-surface-variant hover:text-primary transition-colors font-body-base text-body-base" href="#">Privacy Policy</a>
-          <a className="text-on-surface-variant hover:text-primary transition-colors font-body-base text-body-base" href="#">Terms of Service</a>
-          <a className="text-on-surface-variant hover:text-primary transition-colors font-body-base text-body-base" href="#">Security</a>
+          <Link to="/privacy" className={footerLinkClass}>Privacy Policy</Link>
+          <Link to="/terms" className={footerLinkClass}>Terms of Service</Link>
+          <Link to="/security" className={footerLinkClass}>Security</Link>
         </div>
       </div>
     </footer>

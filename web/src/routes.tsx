@@ -6,6 +6,9 @@ import { HomePage } from "./pages/landing/HomePage";
 import { FeaturesPage } from "./pages/landing/FeaturesPage";
 import { SolutionsPage } from "./pages/landing/SolutionsPage";
 import { CompanyPage } from "./pages/landing/CompanyPage";
+import { TermsOfServicePage } from "./pages/landing/TermsOfServicePage";
+import { PrivacyPolicyPage } from "./pages/landing/PrivacyPolicyPage";
+import { SecurityPage } from "./pages/landing/SecurityPage";
 import { LoginPage } from "./pages/LoginPage";
 import { FleetDashboardPage } from "./pages/FleetDashboardPage";
 import { SitesListPage } from "./pages/SitesListPage";
@@ -30,6 +33,9 @@ export const router = createBrowserRouter([
   { path: "/features", element: <FeaturesPage /> },
   { path: "/solutions", element: <SolutionsPage /> },
   { path: "/company", element: <CompanyPage /> },
+  { path: "/terms", element: <TermsOfServicePage /> },
+  { path: "/privacy", element: <PrivacyPolicyPage /> },
+  { path: "/security", element: <SecurityPage /> },
   { path: "/login", element: <LoginPage /> },
   { path: "/accept-invite", element: <AcceptInvitePage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
