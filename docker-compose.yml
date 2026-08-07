@@ -29,5 +29,68 @@ services:
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
 
+  # One-shot: applies migrations/*.sql via goose, then exits. Re-run with
+  # `docker compose run --rm migrate` after adding a new migration —
+  # it's not a long-running service so `docker compose up` alone won't
+  # re-trigger it on later starts.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    env_file: .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: zgnis-api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+  ingestor:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestor
+    container_name: zgnis-ingestor
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+
+  # Not started by `docker compose up` (no `depends_on` targets it) —
+  # run once per environment via:
+  #   docker compose run --rm seed-operator -email you@example.com -password 'change-me-now'
+  seed-operator:
+    build:
+      context: .
+      dockerfile: Dockerfile.seed-operator
+    env_file: .env
+    profiles: ["tools"]
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+    container_name: zgnis-web
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
 volumes:
   timescale_data:

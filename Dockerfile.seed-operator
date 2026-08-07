@@ -1,0 +1,15 @@
+# One-off image for creating the first operator account. Run via
+# `docker compose run --rm seed-operator -email you@example.com -password 'change-me-now'`
+# — never as a long-running service (see cmd/seed-operator's own comment
+# on why there's deliberately no HTTP bootstrap route for this).
+FROM golang:1.24-alpine AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/seed-operator ./cmd/seed-operator
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /out/seed-operator /usr/local/bin/seed-operator
+ENTRYPOINT ["/usr/local/bin/seed-operator"]

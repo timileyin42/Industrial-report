@@ -1,0 +1,9 @@
+# Runs goose migrations against DATABASE_URL, then exits — a one-shot
+# compose service, not a long-running container. Continuous aggregates
+# still need the manual refresh step documented in README §3 after this
+# runs for the first time against a database with existing data.
+FROM golang:1.24-alpine
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+WORKDIR /migrations
+COPY migrations/ .
+ENTRYPOINT ["sh", "-c", "goose -dir . postgres \"$DATABASE_URL\" up"]

@@ -3,6 +3,10 @@ mosquitto/data/
 mosquitto/log/
 *.log
 
+# Real secrets — .env.example is the committed template, .env itself
+# (and web/.env, which already has its own untracked convention) never is.
+.env
+
 # OS cruft
 .DS_Store
 
