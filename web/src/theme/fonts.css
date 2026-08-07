@@ -1,0 +1,20 @@
+/* Self-hosted fonts — not the Stitch export's Google Fonts CDN links.
+   Public Sans and JetBrains Mono are both variable fonts; one file each
+   covers their full weight range, referenced via a font-weight range
+   below rather than one @font-face block per weight. */
+
+@font-face {
+  font-family: "Public Sans";
+  src: url("/fonts/PublicSans-Variable.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 500 600;
+  font-style: normal;
+  font-display: swap;
+}
