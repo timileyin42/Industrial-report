@@ -299,6 +299,7 @@ type Site struct {
 	SystemSizeKw      pgtype.Numeric
 	InstallDate       pgtype.Date
 	Timezone          string
+	Country           string
 	CreatedAt         pgtype.Timestamptz
 }
 

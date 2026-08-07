@@ -29,6 +29,12 @@ type CreateSiteInput struct {
 	InstallDate       *time.Time
 	Timezone          string
 	CohortID          *string
+	// Country resolves which grid emission factor CO2-offset reporting
+	// uses for this site (internal/registry/emissions.go) — required,
+	// no default, per migrations/0010_site_country.sql's reasoning:
+	// guessing a country is exactly the mistake GRID_COUNTRY's old
+	// single global default made.
+	Country string
 }
 
 func (s *Sites) Create(ctx context.Context, actorUserID int64, in CreateSiteInput) (db.Site, error) {
@@ -39,6 +45,9 @@ func (s *Sites) Create(ctx context.Context, actorUserID int64, in CreateSiteInpu
 		return db.Site{}, err
 	}
 	if err := validateRequired("timezone", in.Timezone); err != nil {
+		return db.Site{}, err
+	}
+	if err := validateCountry("country", in.Country); err != nil {
 		return db.Site{}, err
 	}
 	if in.SystemSizeKW != nil && *in.SystemSizeKW < 0 {
@@ -56,11 +65,28 @@ func (s *Sites) Create(ctx context.Context, actorUserID int64, in CreateSiteInpu
 		InstallDate:       dateOrNull(in.InstallDate),
 		Timezone:          in.Timezone,
 		CohortID:          textOrNull(in.CohortID),
+		Country:           in.Country,
 	})
 	if err != nil {
 		return db.Site{}, err
 	}
 	recordAction(ctx, s.q, actorUserID, "site.create", "site", site.SiteID, nil)
+	return site, nil
+}
+
+// UpdateCountry corrects a site's country after creation — needed
+// because migrating in this column had to backfill every pre-existing
+// site to 'NG' (see migrations/0010_site_country.sql); any site that
+// backfill guessed wrong needs a real way to be corrected.
+func (s *Sites) UpdateCountry(ctx context.Context, actorUserID int64, siteID, country string) (db.Site, error) {
+	if err := validateCountry("country", country); err != nil {
+		return db.Site{}, err
+	}
+	site, err := s.q.UpdateSiteCountry(ctx, db.UpdateSiteCountryParams{SiteID: siteID, Country: country})
+	if err != nil {
+		return db.Site{}, err
+	}
+	recordAction(ctx, s.q, actorUserID, "site.update_country", "site", site.SiteID, map[string]any{"country": country})
 	return site, nil
 }
 

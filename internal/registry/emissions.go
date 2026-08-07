@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -13,23 +14,22 @@ import (
 
 type Emissions struct {
 	analytics      *Analytics
+	sites          *Sites
 	q              *db.Queries
 	defaultCountry string
 }
 
-// defaultCountry was a hardcoded "NG" literal in three places here and in
-// emissions_handlers.go — this platform only ever operated in one
-// country, so "current factor" meant "current NG factor." Now
-// configurable via GRID_COUNTRY (see cmd/api/main.go), defaulting to "NG"
-// so existing deployments with an NG factor already seeded keep working
-// unchanged. This is still a single global default, not a per-site
-// country — a fleet spanning multiple countries/grids needs a real
-// per-site country field and is a separate, larger decision.
-func NewEmissions(analytics *Analytics, q *db.Queries, defaultCountry string) *Emissions {
+// defaultCountry (GRID_COUNTRY, see cmd/api/main.go) is no longer "the
+// one true country" for CO2-offset math — SiteEmissions/FleetEmissions
+// below resolve each site's own country (migrations/0010_site_country.sql)
+// instead. It's kept only as which country the config/emission-factor
+// settings screen shows by default when no site/?country= context is
+// given (e.g. an operator opening "Set New Factor" cold).
+func NewEmissions(analytics *Analytics, sites *Sites, q *db.Queries, defaultCountry string) *Emissions {
 	if defaultCountry == "" {
 		defaultCountry = "NG"
 	}
-	return &Emissions{analytics: analytics, q: q, defaultCountry: defaultCountry}
+	return &Emissions{analytics: analytics, sites: sites, q: q, defaultCountry: defaultCountry}
 }
 
 // ErrNoEmissionFactor means no operator has ever set a grid emission
@@ -136,17 +136,48 @@ type EmissionPoint struct {
 	KgCO2       float64
 }
 
+// CountryEmissions is one country's contribution to a fleet-wide
+// emissions query — surfaced explicitly rather than silently blended into
+// one factor, since a fleet spanning grids genuinely has more than one
+// "current factor" and picking one to represent all of them would
+// misrepresent the other country's sites' real CO2 offset.
+type CountryEmissions struct {
+	Country             string
+	Factor              EmissionFactor
+	CumulativeTonnesCO2 float64
+	// Unconfigured is true when no operator has set an emission factor
+	// for this country yet — its sites' generation is excluded from
+	// CumulativeTonnesCO2 (never guessed), and the caller should surface
+	// this rather than let the total quietly look complete.
+	Unconfigured bool
+}
+
 type EmissionsSeries struct {
+	// Factor is populated only when the query resolved to exactly one
+	// country with a configured factor (the single-site case, or a
+	// fleet/cohort that happens to be single-country) — zero-valued
+	// otherwise; check CountryBreakdown for the multi-country case.
 	Factor              EmissionFactor
 	Points              []EmissionPoint
 	CumulativeTonnesCO2 float64
+	// CountryBreakdown is set (len > 1, or len == 1 with Unconfigured
+	// true) only for fleet-wide queries — nil for a single-site query or
+	// a single-country fleet, so existing single-country callers/JSON
+	// consumers see no shape change.
+	CountryBreakdown []CountryEmissions
 }
 
-// SiteEmissions converts a site's energy series into CO2 avoided using the
-// current emission factor. Returns ErrNoEmissionFactor (-> 409 at the
-// handler) if none has been configured yet.
+// SiteEmissions converts a site's energy series into CO2 avoided using
+// that site's own country's current emission factor (migrations/
+// 0010_site_country.sql) — not one global default. Returns
+// ErrNoEmissionFactor (-> 409 at the handler) if that country has none
+// configured yet.
 func (e *Emissions) SiteEmissions(ctx context.Context, siteID, period string, from, to time.Time) (EmissionsSeries, error) {
-	factor, err := e.Current(ctx, "")
+	site, err := e.sites.Get(ctx, siteID)
+	if err != nil {
+		return EmissionsSeries{}, err
+	}
+	factor, err := e.Current(ctx, site.Country)
 	if err != nil {
 		return EmissionsSeries{}, err
 	}
@@ -157,16 +188,78 @@ func (e *Emissions) SiteEmissions(ctx context.Context, siteID, period string, fr
 	return e.toSeries(factor, energy), nil
 }
 
+// FleetEmissions sums CO2 avoided across every country represented in the
+// fleet/cohort, each using its own emission factor, rather than applying
+// one global factor to fleet-wide energy the way this used to work. A
+// country with no configured factor contributes zero to the total (never
+// a guessed number) but is still reported in CountryBreakdown so the
+// caller can surface "GB isn't configured yet" instead of a total that
+// looks complete but silently excludes those sites. Only returns
+// ErrNoEmissionFactor if EVERY represented country lacks a factor —
+// matching the old single-country behavior when there's genuinely just
+// one country to resolve.
 func (e *Emissions) FleetEmissions(ctx context.Context, cohortID *string, period string, from, to time.Time) (EmissionsSeries, error) {
-	factor, err := e.Current(ctx, "")
+	byCountry, err := e.analytics.FleetEnergyByCountry(ctx, cohortID, period, from, to)
 	if err != nil {
 		return EmissionsSeries{}, err
 	}
-	energy, err := e.analytics.FleetEnergy(ctx, cohortID, period, from, to)
-	if err != nil {
-		return EmissionsSeries{}, err
+
+	countries := make([]string, 0, len(byCountry))
+	for country := range byCountry {
+		countries = append(countries, country)
 	}
-	return e.toSeries(factor, energy), nil
+	sort.Strings(countries)
+
+	merged := map[time.Time]*EmissionPoint{}
+	var order []time.Time
+	breakdown := make([]CountryEmissions, 0, len(countries))
+	var totalTonnes float64
+	configuredCount := 0
+
+	for _, country := range countries {
+		factor, err := e.Current(ctx, country)
+		if errors.Is(err, ErrNoEmissionFactor) {
+			breakdown = append(breakdown, CountryEmissions{Country: country, Unconfigured: true})
+			continue
+		}
+		if err != nil {
+			return EmissionsSeries{}, err
+		}
+		configuredCount++
+
+		series := e.toSeries(factor, byCountry[country])
+		breakdown = append(breakdown, CountryEmissions{Country: country, Factor: factor, CumulativeTonnesCO2: series.CumulativeTonnesCO2})
+		totalTonnes += series.CumulativeTonnesCO2
+
+		for _, p := range series.Points {
+			point, ok := merged[p.PeriodStart]
+			if !ok {
+				point = &EmissionPoint{PeriodStart: p.PeriodStart}
+				merged[p.PeriodStart] = point
+				order = append(order, p.PeriodStart)
+			}
+			point.EnergyKWh += p.EnergyKWh
+			point.KgCO2 += p.KgCO2
+		}
+	}
+
+	if len(countries) > 0 && configuredCount == 0 {
+		return EmissionsSeries{}, ErrNoEmissionFactor
+	}
+
+	sort.Slice(order, func(i, j int) bool { return order[i].Before(order[j]) })
+	points := make([]EmissionPoint, 0, len(order))
+	for _, t := range order {
+		points = append(points, *merged[t])
+	}
+
+	result := EmissionsSeries{Points: points, CumulativeTonnesCO2: totalTonnes}
+	if len(countries) == 1 && !breakdown[0].Unconfigured {
+		result.Factor = breakdown[0].Factor
+	} else {
+		result.CountryBreakdown = breakdown
+	}
+	return result, nil
 }
 
 func (e *Emissions) toSeries(factor EmissionFactor, energy EnergySeries) EmissionsSeries {

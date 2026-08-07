@@ -75,6 +75,12 @@ type Querier interface {
 	// only stores device_id. A device that's since been deleted still shows
 	// its audit rows with site_id NULL rather than disappearing.
 	ListIngestionAuditLog(ctx context.Context, arg ListIngestionAuditLogParams) ([]ListIngestionAuditLogRow, error)
+	// Site->country lookup for fleet-wide emissions, which must resolve each
+	// site's own grid factor rather than one global default (see
+	// internal/registry/emissions.go FleetEmissions). Unpaginated: this is an
+	// internal aggregation input, not a user-facing list, and is bounded by
+	// fleet size, not telemetry volume.
+	ListSiteCountries(ctx context.Context, cohortID pgtype.Text) ([]ListSiteCountriesRow, error)
 	// Per-device-per-day rows for one site, from the telemetry_daily continuous
 	// aggregate. The registry layer sums across a site's devices per day (a
 	// site can have more than one device) and falls back to
@@ -110,6 +116,10 @@ type Querier interface {
 	MarkPasswordResetTokenUsed(ctx context.Context, id int64) error
 	RevokeDevice(ctx context.Context, deviceID string) (Device, error)
 	RotateDeviceSecret(ctx context.Context, arg RotateDeviceSecretParams) (Device, error)
+	// Corrects a site's country after creation — needed because the
+	// migration backfilling this column had to guess 'NG' for every
+	// pre-existing row (see migrations/0010_site_country.sql).
+	UpdateSiteCountry(ctx context.Context, arg UpdateSiteCountryParams) (Site, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 }
 

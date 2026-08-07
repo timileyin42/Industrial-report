@@ -126,6 +126,90 @@ func (a *Analytics) loadFleetDailyRows(ctx context.Context, cohortID *string, fr
 	return result, nil
 }
 
+// siteCountries returns each site's own country (migrations/0010_site_country.sql),
+// optionally scoped to a cohort — the lookup FleetEnergyByCountry needs to
+// group fleet-wide rows by country instead of collapsing them into one
+// fleet-wide total the way loadFleetDailyRows does.
+func (a *Analytics) siteCountries(ctx context.Context, cohortID *string) (map[string]string, error) {
+	rows, err := a.q.ListSiteCountries(ctx, textOrNull(cohortID))
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.SiteID] = r.Country
+	}
+	return out, nil
+}
+
+// FleetEnergyByCountry is loadFleetDailyRows' country-partitioned sibling
+// — grouped by (day, site's country) rather than just day, so
+// Emissions.FleetEmissions can apply each country's own grid emission
+// factor instead of one global default (see internal/registry/emissions.go).
+func (a *Analytics) FleetEnergyByCountry(ctx context.Context, cohortID *string, period string, from, to time.Time) (map[string]EnergySeries, error) {
+	rows, err := a.q.ListFleetDailyRollup(ctx, db.ListFleetDailyRollupParams{
+		Day:      pgtype.Timestamptz{Time: from, Valid: true},
+		Day_2:    pgtype.Timestamptz{Time: to, Valid: true},
+		CohortID: textOrNull(cohortID),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	countryBySite, err := a.siteCountries(ctx, cohortID)
+	if err != nil {
+		return nil, err
+	}
+
+	byCountry := map[string]map[time.Time]*dailyRow{}
+	orderByCountry := map[string][]time.Time{}
+	for _, r := range rows {
+		country := countryBySite[r.SiteID]
+		if country == "" {
+			// Shouldn't happen — country is NOT NULL on sites — but a
+			// device whose site was deleted out from under it (if that
+			// ever becomes possible) falls in an honestly-labeled bucket
+			// rather than silently joining someone else's country total.
+			country = "unknown"
+		}
+		dayMap, ok := byCountry[country]
+		if !ok {
+			dayMap = map[time.Time]*dailyRow{}
+			byCountry[country] = dayMap
+		}
+
+		day := r.Day.Time
+		out, ok := dayMap[day]
+		if !ok {
+			out = &dailyRow{Day: day}
+			dayMap[day] = out
+			orderByCountry[country] = append(orderByCountry[country], day)
+		}
+
+		energy, err := a.deviceDayEnergy(ctx, r.DeviceID, day, r.HasReset, r.EnergyStartKwh, r.EnergyEndKwh)
+		if err != nil {
+			return nil, err
+		}
+		out.EnergyKWh += energy
+		out.ReadingCount += r.ReadingCount
+		out.BackfilledCount += r.BackfilledCount
+		if r.PeakPowerKw.Valid && r.PeakPowerKw.Float64 > out.PeakPowerKW {
+			out.PeakPowerKW = r.PeakPowerKw.Float64
+			out.PeakDeviceID = r.DeviceID
+		}
+	}
+
+	result := make(map[string]EnergySeries, len(byCountry))
+	for country, dayMap := range byCountry {
+		rowsForCountry := make([]dailyRow, 0, len(dayMap))
+		for _, day := range orderByCountry[country] {
+			rowsForCountry = append(rowsForCountry, *dayMap[day])
+		}
+		result[country] = bucketDailyRows(rowsForCountry, period)
+	}
+	return result, nil
+}
+
 func (a *Analytics) deviceDayEnergy(ctx context.Context, deviceID string, day time.Time, hasReset bool, startKwh, endKwh pgtype.Float8) (float64, error) {
 	if !hasReset {
 		if !startKwh.Valid || !endKwh.Valid {

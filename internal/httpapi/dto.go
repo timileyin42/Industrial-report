@@ -19,6 +19,7 @@ type siteResponse struct {
 	InverterMakeModel *string   `json:"inverter_make_model,omitempty"`
 	SystemSizeKW      *float64  `json:"system_size_kw,omitempty"`
 	Timezone          string    `json:"timezone"`
+	Country           string    `json:"country"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 
@@ -33,6 +34,7 @@ func toSiteResponse(s db.Site) siteResponse {
 		InverterMakeModel: textPtr(s.InverterMakeModel),
 		SystemSizeKW:      numericPtr(s.SystemSizeKw),
 		Timezone:          s.Timezone,
+		Country:           s.Country,
 		CreatedAt:         s.CreatedAt.Time,
 	}
 }

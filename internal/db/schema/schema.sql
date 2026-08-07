@@ -16,6 +16,7 @@ CREATE TABLE sites (
     system_size_kw      numeric,
     install_date        date,
     timezone            text NOT NULL DEFAULT 'UTC', -- see migrations/0009_delocalize_defaults.sql
+    country             text NOT NULL, -- see migrations/0010_site_country.sql — no default, must be set explicitly
     created_at          timestamptz NOT NULL DEFAULT now()
 );
 

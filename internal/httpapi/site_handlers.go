@@ -23,6 +23,14 @@ type createSiteRequest struct {
 	SystemSizeKW      *float64 `json:"system_size_kw,omitempty"`
 	Timezone          string   `json:"timezone"`
 	CohortID          *string  `json:"cohort_id,omitempty"`
+	// Country resolves which grid emission factor this site's CO2-offset
+	// reporting uses (migrations/0010_site_country.sql) — required, no
+	// server-side default; see registry.Sites.Create's validation.
+	Country string `json:"country"`
+}
+
+type updateSiteCountryRequest struct {
+	Country string `json:"country"`
 }
 
 type pageResponse[T any] struct {
@@ -54,11 +62,30 @@ func (h *handlers) createSite(c echo.Context) error {
 		SystemSizeKW:      req.SystemSizeKW,
 		Timezone:          req.Timezone,
 		CohortID:          req.CohortID,
+		Country:           req.Country,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 	return c.JSON(http.StatusCreated, toSiteResponse(site))
+}
+
+// updateSiteCountry corrects a site's country after creation — every
+// pre-existing site was backfilled to 'NG' by migrations/0010_site_country.sql
+// and needs a real way to be corrected if that guess was wrong.
+func (h *handlers) updateSiteCountry(c echo.Context) error {
+	claims, _ := auth.GetClaims(c)
+
+	var req updateSiteCountryRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	site, err := h.deps.Sites.UpdateCountry(c.Request().Context(), claims.UserID, c.Param("site_id"), req.Country)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, toSiteResponse(site))
 }
 
 func (h *handlers) getSite(c echo.Context) error {

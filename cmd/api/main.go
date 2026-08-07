@@ -47,7 +47,7 @@ func main() {
 	fleet := registry.NewFleet(sites, devices, onlineThreshold, expectedInterval, coverageWindow)
 	telemetry := registry.NewTelemetry(queries)
 	analytics := registry.NewAnalytics(queries)
-	emissions := registry.NewEmissions(analytics, queries, os.Getenv("GRID_COUNTRY"))
+	emissions := registry.NewEmissions(analytics, sites, queries, os.Getenv("GRID_COUNTRY"))
 	benchmark := registry.NewBenchmark(analytics)
 	anomaly := registry.NewAnomaly(analytics)
 	auditLog := registry.NewAuditLog(queries)

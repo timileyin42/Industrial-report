@@ -67,6 +67,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.POST("/sites", h.createSite, operatorOnly)
 	authed.GET("/sites", h.listSites)
 	authed.GET("/sites/:site_id", h.getSite, auth.RequireSiteAccess(h.resolveSiteFromParam))
+	authed.PATCH("/sites/:site_id/country", h.updateSiteCountry, operatorOnly)
 	authed.GET("/sites/:site_id/telemetry", h.listTelemetry, auth.RequireSiteAccess(h.resolveSiteFromParam))
 
 	authed.POST("/devices", h.registerDevice, operatorOnly, registerLimiter)
@@ -150,7 +151,7 @@ func corsMiddleware() echo.MiddlewareFunc {
 	}
 	return middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: origins,
-		AllowMethods: []string{echo.GET, echo.POST},
+		AllowMethods: []string{echo.GET, echo.POST, echo.PATCH},
 		AllowHeaders: []string{echo.HeaderAuthorization, echo.HeaderContentType},
 	})
 }

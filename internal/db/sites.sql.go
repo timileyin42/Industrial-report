@@ -12,9 +12,9 @@ import (
 )
 
 const createSite = `-- name: CreateSite :one
-INSERT INTO sites (site_id, name, address, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, cohort_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, created_at
+INSERT INTO sites (site_id, name, address, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, cohort_id, country)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at
 `
 
 type CreateSiteParams struct {
@@ -28,6 +28,7 @@ type CreateSiteParams struct {
 	InstallDate       pgtype.Date
 	Timezone          string
 	CohortID          pgtype.Text
+	Country           string
 }
 
 func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error) {
@@ -42,6 +43,7 @@ func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, e
 		arg.InstallDate,
 		arg.Timezone,
 		arg.CohortID,
+		arg.Country,
 	)
 	var i Site
 	err := row.Scan(
@@ -55,6 +57,7 @@ func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, e
 		&i.SystemSizeKw,
 		&i.InstallDate,
 		&i.Timezone,
+		&i.Country,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -80,7 +83,7 @@ func (q *Queries) FleetTotals(ctx context.Context) (FleetTotalsRow, error) {
 }
 
 const getSite = `-- name: GetSite :one
-SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, created_at FROM sites WHERE site_id = $1
+SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at FROM sites WHERE site_id = $1
 `
 
 func (q *Queries) GetSite(ctx context.Context, siteID string) (Site, error) {
@@ -97,13 +100,49 @@ func (q *Queries) GetSite(ctx context.Context, siteID string) (Site, error) {
 		&i.SystemSizeKw,
 		&i.InstallDate,
 		&i.Timezone,
+		&i.Country,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
+const listSiteCountries = `-- name: ListSiteCountries :many
+SELECT site_id, country FROM sites
+WHERE $1::text IS NULL OR cohort_id = $1
+`
+
+type ListSiteCountriesRow struct {
+	SiteID  string
+	Country string
+}
+
+// Site->country lookup for fleet-wide emissions, which must resolve each
+// site's own grid factor rather than one global default (see
+// internal/registry/emissions.go FleetEmissions). Unpaginated: this is an
+// internal aggregation input, not a user-facing list, and is bounded by
+// fleet size, not telemetry volume.
+func (q *Queries) ListSiteCountries(ctx context.Context, cohortID pgtype.Text) ([]ListSiteCountriesRow, error) {
+	rows, err := q.db.Query(ctx, listSiteCountries, cohortID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSiteCountriesRow
+	for rows.Next() {
+		var i ListSiteCountriesRow
+		if err := rows.Scan(&i.SiteID, &i.Country); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSites = `-- name: ListSites :many
-SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, created_at FROM sites
+SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at FROM sites
 WHERE ($1::text IS NULL OR site_id = $1)
   AND (
     $2::timestamptz IS NULL
@@ -148,6 +187,7 @@ func (q *Queries) ListSites(ctx context.Context, arg ListSitesParams) ([]Site, e
 			&i.SystemSizeKw,
 			&i.InstallDate,
 			&i.Timezone,
+			&i.Country,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -158,4 +198,37 @@ func (q *Queries) ListSites(ctx context.Context, arg ListSitesParams) ([]Site, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateSiteCountry = `-- name: UpdateSiteCountry :one
+UPDATE sites SET country = $2 WHERE site_id = $1
+RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at
+`
+
+type UpdateSiteCountryParams struct {
+	SiteID  string
+	Country string
+}
+
+// Corrects a site's country after creation — needed because the
+// migration backfilling this column had to guess 'NG' for every
+// pre-existing row (see migrations/0010_site_country.sql).
+func (q *Queries) UpdateSiteCountry(ctx context.Context, arg UpdateSiteCountryParams) (Site, error) {
+	row := q.db.QueryRow(ctx, updateSiteCountry, arg.SiteID, arg.Country)
+	var i Site
+	err := row.Scan(
+		&i.SiteID,
+		&i.CohortID,
+		&i.Address,
+		&i.Name,
+		&i.GpsLat,
+		&i.GpsLng,
+		&i.InverterMakeModel,
+		&i.SystemSizeKw,
+		&i.InstallDate,
+		&i.Timezone,
+		&i.Country,
+		&i.CreatedAt,
+	)
+	return i, err
 }

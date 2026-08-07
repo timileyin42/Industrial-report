@@ -35,19 +35,48 @@ type emissionPointResponse struct {
 	KgCO2       float64   `json:"kg_co2"`
 }
 
+// countryEmissionsResponse surfaces each country's own factor/contribution
+// for a fleet query spanning more than one grid — see registry.CountryEmissions.
+// Unconfigured true means that country's sites are real generation with no
+// CO2 figure yet (excluded from the total, never guessed), not zero offset.
+type countryEmissionsResponse struct {
+	Country                     string                  `json:"country"`
+	Factor                      *emissionFactorResponse `json:"emission_factor,omitempty"`
+	CumulativeLifetimeTonnesCO2 float64                 `json:"cumulative_lifetime_co2_tonnes"`
+	Unconfigured                bool                    `json:"unconfigured"`
+}
+
 func toEmissionsResponse(period string, series registry.EmissionsSeries) map[string]any {
 	points := make([]emissionPointResponse, 0, len(series.Points))
 	for _, p := range series.Points {
 		points = append(points, emissionPointResponse{PeriodStart: p.PeriodStart, EnergyKWh: p.EnergyKWh, KgCO2: p.KgCO2})
 	}
-	return map[string]any{
+	resp := map[string]any{
 		"unit_kg":                        "kg",
 		"unit_tonnes":                    "t",
 		"period":                         period,
-		"emission_factor":                toEmissionFactorResponse(series.Factor),
 		"points":                         points,
 		"cumulative_lifetime_co2_tonnes": series.CumulativeTonnesCO2,
 	}
+
+	if series.CountryBreakdown != nil {
+		// Multi-country (or single-country-but-unconfigured) fleet query
+		// — no single "the" emission factor represents all of it, so
+		// emission_factor is omitted in favor of the per-country list.
+		breakdown := make([]countryEmissionsResponse, 0, len(series.CountryBreakdown))
+		for _, c := range series.CountryBreakdown {
+			item := countryEmissionsResponse{Country: c.Country, CumulativeLifetimeTonnesCO2: c.CumulativeTonnesCO2, Unconfigured: c.Unconfigured}
+			if !c.Unconfigured {
+				f := toEmissionFactorResponse(c.Factor)
+				item.Factor = &f
+			}
+			breakdown = append(breakdown, item)
+		}
+		resp["country_breakdown"] = breakdown
+	} else {
+		resp["emission_factor"] = toEmissionFactorResponse(series.Factor)
+	}
+	return resp
 }
 
 func emissionsErrorToHTTP(err error) error {
