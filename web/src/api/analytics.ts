@@ -4,10 +4,12 @@ import {
   YieldSeriesSchema,
   PeakSeriesSchema,
   CapacityFactorSeriesSchema,
+  PerformanceRatioSeriesSchema,
   type EnergySeries,
   type YieldSeries,
   type PeakSeries,
   type CapacityFactorSeries,
+  type PerformanceRatioSeries,
 } from "./types";
 
 export type Period = "daily" | "weekly" | "monthly";
@@ -37,6 +39,11 @@ export async function getSiteSpecificYield(siteId: string, range: AnalyticsRange
   return YieldSeriesSchema.parse(data);
 }
 
+export async function getFleetSpecificYield(range: AnalyticsRange & { cohort_id?: string } = {}): Promise<YieldSeries> {
+  const data = await apiRequest<unknown>("/v1/fleet/analytics/specific-yield", { query: range });
+  return YieldSeriesSchema.parse(data);
+}
+
 export async function getSitePeak(siteId: string, range: Omit<AnalyticsRange, "period"> = {}): Promise<PeakSeries> {
   const data = await apiRequest<unknown>(`/v1/sites/${encodeURIComponent(siteId)}/analytics/peak`, {
     query: range,
@@ -49,4 +56,16 @@ export async function getSiteCapacityFactor(siteId: string, range: AnalyticsRang
     query: range,
   });
   return CapacityFactorSeriesSchema.parse(data);
+}
+
+export async function getSitePerformanceRatio(siteId: string, range: AnalyticsRange = {}): Promise<PerformanceRatioSeries> {
+  const data = await apiRequest<unknown>(`/v1/sites/${encodeURIComponent(siteId)}/analytics/performance-ratio`, {
+    query: range,
+  });
+  return PerformanceRatioSeriesSchema.parse(data);
+}
+
+export async function getFleetPerformanceRatio(range: AnalyticsRange & { cohort_id?: string } = {}): Promise<PerformanceRatioSeries> {
+  const data = await apiRequest<unknown>("/v1/fleet/analytics/performance-ratio", { query: range });
+  return PerformanceRatioSeriesSchema.parse(data);
 }

@@ -39,3 +39,10 @@ export async function registerDevice(input: RegisterDeviceInput): Promise<Device
   const data = await apiRequest<unknown>("/v1/devices", { method: "POST", body: input });
   return DeviceWithSecretSchema.parse(data);
 }
+
+// The old secret stops working the instant this succeeds — the backend
+// invalidates it server-side, not just issues a new one alongside it.
+export async function rotateDeviceSecret(deviceId: string): Promise<DeviceWithSecret> {
+  const data = await apiRequest<unknown>(`/v1/devices/${encodeURIComponent(deviceId)}/rotate-secret`, { method: "POST" });
+  return DeviceWithSecretSchema.parse(data);
+}

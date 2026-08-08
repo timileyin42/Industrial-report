@@ -1,5 +1,16 @@
 import { apiRequest } from "./client";
-import type { Role } from "./types";
+import { PageSchema, UserSchema, type Role, type User } from "./types";
+
+export async function listUsers(cursor?: string, limit = 50): Promise<{ items: User[]; nextCursor?: string }> {
+  const data = await apiRequest<unknown>("/v1/users", { query: { cursor, limit } });
+  const parsed = PageSchema(UserSchema).parse(data);
+  return { items: parsed.items, nextCursor: parsed.next_cursor };
+}
+
+export async function setUserDisabled(userId: number, disabled: boolean): Promise<User> {
+  const data = await apiRequest<unknown>(`/v1/users/${userId}/disabled`, { method: "PATCH", body: { disabled } });
+  return UserSchema.parse(data);
+}
 
 export interface InviteUserInput {
   email: string;

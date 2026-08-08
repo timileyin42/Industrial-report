@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { Factory, BarChart3, Pencil } from "lucide-react";
+import { Factory, BarChart3, Pencil, Star } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { LineChart } from "../components/charts/LineChart";
@@ -12,7 +12,7 @@ import { ExportButton } from "../components/export/ExportButton";
 import { AsyncExportButton } from "../components/export/AsyncExportButton";
 import { MapEmbed } from "../components/map/MapEmbed";
 import { useAuth } from "../auth/AuthContext";
-import { getSite, updateSiteCountry } from "../api/sites";
+import { getSite, updateSiteCountry, setSitePrimary } from "../api/sites";
 import { listSiteTelemetry } from "../api/telemetry";
 import { downloadSiteTelemetryCSV, downloadSiteSummaryCSV } from "../api/exports";
 import { ApiError } from "../api/types";
@@ -27,6 +27,7 @@ export function SiteDetailPage() {
   const [editingCountry, setEditingCountry] = useState(false);
   const [countryInput, setCountryInput] = useState("");
   const [countryError, setCountryError] = useState<string | null>(null);
+  const [primaryError, setPrimaryError] = useState<string | null>(null);
 
   const siteQuery = useQuery({
     queryKey: ["site", siteId],
@@ -46,6 +47,21 @@ export function SiteDetailPage() {
     },
     onError: (err) => {
       setCountryError(err instanceof ApiError ? err.message : "Couldn't update the country. Try again.");
+    },
+  });
+
+  // The fleet's one primary/home site — what the Fleet Dashboard's
+  // weather widget resolves its location from (see WeatherWidget wiring
+  // in FleetDashboardPage.tsx). Setting a new primary clears the flag
+  // from whichever site held it before, server-side.
+  const primaryMutation = useMutation({
+    mutationFn: () => setSitePrimary(siteId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["site", siteId] });
+      setPrimaryError(null);
+    },
+    onError: (err) => {
+      setPrimaryError(err instanceof ApiError ? err.message : "Couldn't set this as the primary site. Try again.");
     },
   });
 
@@ -92,20 +108,43 @@ export function SiteDetailPage() {
                 <Factory size={28} />
               </div>
               <div>
-                <h4 className="font-headline-md text-headline-md text-on-surface">{site.name ?? site.site_id}</h4>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-headline-md text-headline-md text-on-surface">{site.name ?? site.site_id}</h4>
+                  {site.is_primary && (
+                    <span className="flex items-center gap-1 bg-primary-container text-on-primary-container text-[10px] font-bold uppercase px-2 py-1 rounded-full">
+                      <Star size={10} className="fill-current" />
+                      Primary
+                    </span>
+                  )}
+                </div>
                 <p className="text-on-surface-variant font-body-base">
                   {site.address ?? "No address on file"} · {site.site_id}
                 </p>
               </div>
             </div>
-            <Link
-              to={`/app/sites/${site.site_id}/analytics`}
-              className="flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-bold px-4 py-2 rounded-full transition-colors shadow-soft whitespace-nowrap"
-            >
-              <BarChart3 size={16} />
-              <span>View Analytics</span>
-            </Link>
+            <div className="flex items-center gap-2">
+              {isOperator && !site.is_primary && (
+                <button
+                  type="button"
+                  disabled={primaryMutation.isPending}
+                  onClick={() => primaryMutation.mutate()}
+                  title="This is what the Fleet Dashboard's weather widget uses as its location"
+                  className="flex items-center gap-2 glass-card rounded-full px-4 py-2 text-on-surface-variant hover:text-primary transition-colors disabled:opacity-60 whitespace-nowrap"
+                >
+                  <Star size={16} />
+                  <span>Set as Primary</span>
+                </button>
+              )}
+              <Link
+                to={`/app/sites/${site.site_id}/analytics`}
+                className="flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-bold px-4 py-2 rounded-full transition-colors shadow-soft whitespace-nowrap"
+              >
+                <BarChart3 size={16} />
+                <span>View Analytics</span>
+              </Link>
+            </div>
           </div>
+          {primaryError && <p className="font-label-caps text-label-caps text-error mb-2">{primaryError}</p>}
 
           <div className="flex items-center gap-2 text-[12px] text-on-surface-variant">
             <span className="uppercase font-label-caps text-label-caps">Grid country:</span>

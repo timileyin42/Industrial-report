@@ -10,7 +10,7 @@ import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
 import { ExportButton } from "../components/export/ExportButton";
 import { AsyncExportButton } from "../components/export/AsyncExportButton";
-import { getSiteEnergy, getSiteSpecificYield, getSitePeak, getSiteCapacityFactor } from "../api/analytics";
+import { getSiteEnergy, getSiteSpecificYield, getSitePeak, getSiteCapacityFactor, getSitePerformanceRatio } from "../api/analytics";
 import { getSiteEmissions } from "../api/emissions";
 import { getCompareHistory, getCompareFleet } from "../api/benchmark";
 import { getSiteAnomalies } from "../api/anomalies";
@@ -21,12 +21,13 @@ import { ApiError, type AnomalyResult } from "../api/types";
 type Anomaly = AnomalyResult["flags"][number];
 
 // Reference: design/analytics_insights_zgnis_industrial_intelligence/code.html.
-// That mockup fabricates several things this endpoint set can't produce
-// (Performance Ratio vs. weather-adjusted expected output, region
-// clustering, month-on-month deltas, an ambient site photo) — this page
-// ships only what the Phase 3 analytics endpoints actually return:
-// energy, specific yield, peak power, capacity factor (nameplate-based,
-// NOT PR — see the backend's own capacityFactorDefinition string), and
+// That mockup fabricates region clustering, month-on-month deltas, and an
+// ambient site photo, none of which this endpoint set produces — this
+// page ships only what the analytics endpoints actually return: energy,
+// specific yield, peak power, capacity factor (nameplate-based, NOT PR —
+// see the backend's own capacityFactorDefinition string), real
+// weather-adjusted Performance Ratio (historical irradiance from
+// internal/weather, needs the site to have a saved location), and
 // emissions once a grid factor is configured.
 export function SiteAnalyticsPage() {
   const { siteId } = useParams<{ siteId: string }>();
@@ -38,6 +39,7 @@ export function SiteAnalyticsPage() {
   const yieldQuery = useQuery({ queryKey: ["site-yield", siteId], queryFn: () => getSiteSpecificYield(siteId!), enabled: !!siteId });
   const peakQuery = useQuery({ queryKey: ["site-peak", siteId], queryFn: () => getSitePeak(siteId!), enabled: !!siteId });
   const cfQuery = useQuery({ queryKey: ["site-cf", siteId], queryFn: () => getSiteCapacityFactor(siteId!), enabled: !!siteId });
+  const prQuery = useQuery({ queryKey: ["site-pr", siteId], queryFn: () => getSitePerformanceRatio(siteId!), enabled: !!siteId });
   const emissionsQuery = useQuery({
     queryKey: ["site-emissions", siteId],
     queryFn: () => getSiteEmissions(siteId!),
@@ -95,6 +97,7 @@ export function SiteAnalyticsPage() {
   const site = siteQuery.data;
   const energyPoints = (energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
   const yieldPoints = (yieldQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.specific_yield_kwh_per_kwp }));
+  const prPoints = (prQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.performance_ratio_pct }));
   const latestPeak = peakQuery.data?.points.at(-1);
   const latestCF = cfQuery.data?.points.at(-1);
 
@@ -157,7 +160,7 @@ export function SiteAnalyticsPage() {
             {energyQuery.isLoading ? (
               <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
             ) : energyPoints.length < 2 ? (
-              <EmptyState title="Not enough data yet" body="Energy output will chart here once this site has more history." />
+              <EmptyState compact title="Not enough data yet" body="Energy output will chart here once this site has more history." />
             ) : (
               <LineChart points={energyPoints} color="#2f8fe0" />
             )}
@@ -172,13 +175,33 @@ export function SiteAnalyticsPage() {
             {yieldQuery.isLoading ? (
               <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
             ) : yieldQuery.error instanceof ApiError ? (
-              <EmptyState title="Specific yield unavailable" body={yieldQuery.error.message} />
+              <EmptyState compact title="Specific yield unavailable" body={yieldQuery.error.message} />
             ) : yieldPoints.length < 2 ? (
-              <EmptyState title="Not enough data yet" body="Specific yield will chart here once this site has more history." />
+              <EmptyState compact title="Not enough data yet" body="Specific yield will chart here once this site has more history." />
             ) : (
               <LineChart points={yieldPoints} color="#f2a93b" />
             )}
           </div>
+        </div>
+
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/60">
+            <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Performance Ratio (%)</span>
+          </div>
+          <div className="h-[220px] p-6">
+            {prQuery.isLoading ? (
+              <div className="h-full bg-surface-dim rounded-xl animate-pulse" />
+            ) : prQuery.error instanceof ApiError ? (
+              <EmptyState compact title="Performance ratio unavailable" body={prQuery.error.message} />
+            ) : prPoints.length < 2 ? (
+              <EmptyState compact title="Not enough data yet" body="Performance ratio will chart here once this site has more history." />
+            ) : (
+              <LineChart points={prPoints} color="#1a9c6b" />
+            )}
+          </div>
+          {prQuery.data && (
+            <p className="text-[10px] text-on-surface-variant leading-relaxed px-6 pb-6">{prQuery.data.definition}</p>
+          )}
         </div>
 
         <div className="glass-card rounded-2xl overflow-hidden p-6">
@@ -215,7 +238,7 @@ export function SiteAnalyticsPage() {
                 )}
               </div>
             ) : (
-              <EmptyState title="Emissions unavailable" body="Couldn't load emissions data right now." />
+              <EmptyState compact title="Emissions unavailable" body="Couldn't load emissions data right now." />
             )}
           </div>
         </div>
@@ -240,7 +263,7 @@ export function SiteAnalyticsPage() {
                   )}
                 </div>
               ) : (
-                <EmptyState title="Not enough history yet" body="This site needs at least two periods of data to compare." />
+                <EmptyState compact title="Not enough history yet" body="This site needs at least two periods of data to compare." />
               )}
             </div>
           </div>
@@ -262,7 +285,7 @@ export function SiteAnalyticsPage() {
                     </span>
                   </div>
                 ) : (
-                  <EmptyState title="Not enough fleet data yet" body="Fleet comparison needs at least one other site with data." />
+                  <EmptyState compact title="Not enough fleet data yet" body="Fleet comparison needs at least one other site with data." />
                 )}
               </div>
             </div>
@@ -276,7 +299,7 @@ export function SiteAnalyticsPage() {
           {anomalyQuery.isLoading ? (
             <div className="h-32 glass-card rounded-xl animate-pulse" />
           ) : !anomalyQuery.data || anomalyQuery.data.flags.length === 0 ? (
-            <EmptyState title="No anomalies flagged" body="No significant drop below this site's trailing baseline right now." />
+            <EmptyState compact title="No anomalies flagged" body="No significant drop below this site's trailing baseline right now." />
           ) : (
             <>
               <DataTable columns={anomalyColumns} rows={anomalyQuery.data.flags} rowKey={(a) => a.day} />

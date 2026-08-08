@@ -8,6 +8,11 @@ interface Session {
   expiresAt: string;
   role: Role;
   siteId?: string | null;
+  // The backend's login response doesn't echo email back — this is
+  // simply what was typed into the login form, stored so the profile
+  // menu can show something real rather than inventing a display name
+  // (the user model has no such field at all).
+  email?: string;
 }
 
 interface AuthState {
@@ -76,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           expiresAt: res.expires_at,
           role: res.role,
           siteId: res.site_id ?? null,
+          email,
         };
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         setSession(next);

@@ -1,32 +1,36 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { HomeIcon, Zap, Leaf, TrendingUp, HeartPulse, ScrollText, BarChart3, UserPlus, Bell } from "lucide-react";
+import { HomeIcon, Zap, Leaf, TrendingUp, Activity, Bell, Download, AlertTriangle, PowerOff, ShieldOff, Info, CalendarDays } from "lucide-react";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { CircularProgress } from "../components/kpi/CircularProgress";
 import { WeatherWidget } from "../components/dashboard/WeatherWidget";
 import { EnvironmentalImpactPanel } from "../components/dashboard/EnvironmentalImpactPanel";
 import { EnergyFlowIllustration } from "../components/dashboard/EnergyFlowIllustration";
+import { FleetMiniMap } from "../components/dashboard/FleetMiniMap";
 import { LineChart } from "../components/charts/LineChart";
+import { BarChart } from "../components/charts/BarChart";
 import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
 import { useAuth } from "../auth/AuthContext";
-import { getFleetSummary } from "../api/fleet";
+import { getFleetSummary, getCurrentGeneration, getTopSitesToday } from "../api/fleet";
 import { getFleetEnergy } from "../api/analytics";
 import { getFleetTrends } from "../api/benchmark";
 import { getFleetEmissions } from "../api/emissions";
 import { getFleetHealth } from "../api/fleetHealth";
-import { listSites } from "../api/sites";
+import { getPrimarySite, listSites } from "../api/sites";
+import { listDevices } from "../api/devices";
+import { listFleetAlerts } from "../api/alerts";
+import { downloadFleetSummaryCSV } from "../api/exports";
 import { ApiError } from "../api/types";
 
 // Light/glass redesign — replaces the earlier dark-industrial Fleet
-// Dashboard entirely. Every number here is real (fleet summary, fleet
-// health, fleet energy/trends, fleet emissions, real weather for the
-// first site with coordinates) — the previous mockup's "Total Revenue"
-// KPI and named "Alex" greeting aren't reproduced: this platform has no
-// billing/pricing feature, and there's no user-profile endpoint yet to
-// know a real display name, so the greeting uses time-of-day + role
-// instead of inventing a name.
+// Dashboard entirely. Every number here is real — the previous mockup's
+// "Total Revenue" KPI and named "Alex" greeting aren't reproduced: this
+// platform has no billing/pricing feature, and there's no user-profile
+// endpoint yet to know a real display name, so the greeting uses
+// time-of-day + role instead of inventing a name.
 function greeting() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -34,16 +38,75 @@ function greeting() {
   return "Good evening";
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type EnergyTab = "day" | "week" | "month" | "year";
+
+// No "Live" tab — that would need a websocket/streaming subscription
+// this platform doesn't have; Current Generation (below) is the honest
+// "right now" figure instead, and stays anchored to the actual present
+// moment regardless of referenceDate — there's no such thing as "current
+// generation as of a past date." Day/Week/Month all use daily buckets
+// over a longer window anchored to referenceDate; Year switches to
+// monthly buckets so a 12-month chart isn't 365 individual bars.
+function rangeForEnergyTab(tab: EnergyTab, referenceDate: Date): { period: "daily" | "monthly"; from: string; to: string } {
+  const to = referenceDate.getTime();
+  switch (tab) {
+    case "day":
+      return { period: "daily", from: new Date(to - 2 * DAY_MS).toISOString(), to: referenceDate.toISOString() };
+    case "week":
+      return { period: "daily", from: new Date(to - 7 * DAY_MS).toISOString(), to: referenceDate.toISOString() };
+    case "month":
+      return { period: "daily", from: new Date(to - 30 * DAY_MS).toISOString(), to: referenceDate.toISOString() };
+    case "year":
+      return { period: "monthly", from: new Date(to - 365 * DAY_MS).toISOString(), to: referenceDate.toISOString() };
+  }
+}
+
+const ONLINE_THRESHOLD_MINUTES = 10;
+
 export function FleetDashboardPage() {
   const { session } = useAuth();
   const isOperator = session?.role === "operator";
+  const [energyTab, setEnergyTab] = useState<EnergyTab>("day");
+  const [summaryTab, setSummaryTab] = useState<"energy" | "emissions">("energy");
+  // Anchors the Generation Overview tabs and the today-vs-yesterday KPI
+  // deltas — defaults to right now, but picking an earlier date lets you
+  // review the dashboard as of that day instead of only ever "now."
+  // Current Generation and Top Performing Sites (Today) are deliberately
+  // NOT affected — "live right now" and "today" are inherently the
+  // present moment, not something a past date can stand in for.
+  const [referenceDate, setReferenceDate] = useState(() => new Date());
+  const referenceDateKey = referenceDate.toDateString();
 
   const summaryQuery = useQuery({ queryKey: ["fleet-summary"], queryFn: getFleetSummary });
-  const energyQuery = useQuery({ queryKey: ["fleet-energy-30d"], queryFn: () => getFleetEnergy() });
+  const currentGenQuery = useQuery({ queryKey: ["fleet-current-gen"], queryFn: getCurrentGeneration, refetchInterval: 30_000 });
+  // Last 7 daily buckets ending at referenceDate — doubles as (a)
+  // today-vs-yesterday for the KPI deltas below and (b) the Energy &
+  // Emissions Summary bar chart's data, rather than fetching the same
+  // window twice for two different reasons.
+  const recentEnergyQuery = useQuery({
+    queryKey: ["fleet-energy-7d", referenceDateKey],
+    queryFn: () => getFleetEnergy({ period: "daily", from: new Date(referenceDate.getTime() - 7 * DAY_MS).toISOString(), to: referenceDate.toISOString() }),
+  });
+  const recentEmissionsQuery = useQuery({
+    queryKey: ["fleet-emissions-7d", referenceDateKey],
+    queryFn: () => getFleetEmissions({ period: "daily", from: new Date(referenceDate.getTime() - 7 * DAY_MS).toISOString(), to: referenceDate.toISOString() }),
+    retry: false,
+  });
+  const energyRange = rangeForEnergyTab(energyTab, referenceDate);
+  const energyQuery = useQuery({ queryKey: ["fleet-energy", energyTab, referenceDateKey], queryFn: () => getFleetEnergy(energyRange) });
   const trendsQuery = useQuery({ queryKey: ["fleet-trends-dash"], queryFn: () => getFleetTrends() });
   const emissionsQuery = useQuery({ queryKey: ["fleet-emissions-dash"], queryFn: () => getFleetEmissions(), retry: false });
-  const healthQuery = useQuery({ queryKey: ["fleet-health-dash"], queryFn: () => getFleetHealth() });
-  const sitesQuery = useQuery({ queryKey: ["sites-for-weather"], queryFn: () => listSites(undefined, 50) });
+  const healthQuery = useQuery({ queryKey: ["fleet-health-dash"], queryFn: () => getFleetHealth(undefined, 200) });
+  // 404 (no primary site set yet) is an expected, routine state here —
+  // not an error to retry or bubble up. See internal/registry/sites.go
+  // SetPrimary / SiteDetailPage.tsx's "Set as Primary" action.
+  const primarySiteQuery = useQuery({ queryKey: ["primary-site"], queryFn: getPrimarySite, retry: false });
+  const sitesQuery = useQuery({ queryKey: ["dashboard-sites"], queryFn: () => listSites(undefined, 200) });
+  const devicesQuery = useQuery({ queryKey: ["dashboard-devices"], queryFn: () => listDevices({ limit: 200 }) });
+  const alertsQuery = useQuery({ queryKey: ["dashboard-alerts"], queryFn: () => listFleetAlerts(50) });
+  const topSitesQuery = useQuery({ queryKey: ["top-sites-today"], queryFn: () => getTopSitesToday(5) });
 
   if (summaryQuery.isError) {
     if (summaryQuery.error instanceof ApiError && summaryQuery.error.status === 403) return <AccessDenied />;
@@ -52,14 +115,70 @@ export function FleetDashboardPage() {
 
   const data = summaryQuery.data;
   const energyPoints = (energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
-  const latestTrend = trendsQuery.data?.points.at(-1)?.mom_change_pct ?? null;
+  const latestTrend = trendsQuery.data?.points.at(-1) ?? null;
   const emissionsUnconfigured = emissionsQuery.error instanceof ApiError && emissionsQuery.error.status === 409;
-  const firstSiteWithLocation = (sitesQuery.data?.items ?? []).find((s) => s.gps_lat != null && s.gps_lng != null);
+  const primarySite = primarySiteQuery.data;
+  const primarySiteHasLocation = primarySite?.gps_lat != null && primarySite?.gps_lng != null;
 
-  const healthSites = healthQuery.data?.sites.items ?? [];
-  const activeSites = healthSites.filter((s) => s.online_devices > 0).length;
-  const idleSites = healthSites.filter((s) => s.online_devices === 0).length;
-  const capacityPct = healthSites.length > 0 ? (activeSites / healthSites.length) * 100 : 0;
+  // Today vs. yesterday — the last two points of the same 7-day daily
+  // series, not a separate "trend" endpoint. null (not 0) when a day's
+  // data genuinely isn't there yet, so the KPI card shows "—" rather
+  // than a fabricated 0% change.
+  const recentEnergyPoints = recentEnergyQuery.data?.points ?? [];
+  const todayEnergyKWh = recentEnergyPoints.at(-1)?.energy_kwh ?? null;
+  const yesterdayEnergyKWh = recentEnergyPoints.at(-2)?.energy_kwh ?? null;
+  const energyDeltaPct =
+    todayEnergyKWh != null && yesterdayEnergyKWh ? ((todayEnergyKWh - yesterdayEnergyKWh) / yesterdayEnergyKWh) * 100 : null;
+
+  const recentEmissionPoints = recentEmissionsQuery.data?.points ?? [];
+  const todayCO2Kg = recentEmissionPoints.at(-1)?.kg_co2 ?? null;
+  const yesterdayCO2Kg = recentEmissionPoints.at(-2)?.kg_co2 ?? null;
+  const co2DeltaPct = todayCO2Kg != null && yesterdayCO2Kg ? ((todayCO2Kg - yesterdayCO2Kg) / yesterdayCO2Kg) * 100 : null;
+
+  // Fleet Status: Online / Offline / Fault / No Data — a real 4-way
+  // classification, not the simpler 2-way Active/Idle this replaces.
+  // "Fault" comes from the same real signal the Alerts page uses (a
+  // device's latest reading reported status=fault in the last 24h);
+  // "No Data" (never reported) is distinguished from "Offline" (has
+  // reported before, gone quiet) since they mean different things.
+  // Revoked devices are excluded — that's its own state, shown elsewhere.
+  const devices = devicesQuery.data?.items ?? [];
+  const faultDeviceIds = new Set(
+    (alertsQuery.data ?? []).filter((a) => a.type === "device_fault" && a.device_id).map((a) => a.device_id as string)
+  );
+  let onlineCount = 0;
+  let offlineCount = 0;
+  let faultCount = 0;
+  let noDataCount = 0;
+  for (const d of devices) {
+    if (d.revoked_at) continue;
+    if (faultDeviceIds.has(d.device_id)) {
+      faultCount++;
+      continue;
+    }
+    if (!d.last_seen_at) {
+      noDataCount++;
+      continue;
+    }
+    const ageMinutes = (Date.now() - new Date(d.last_seen_at).getTime()) / 60_000;
+    if (ageMinutes < ONLINE_THRESHOLD_MINUTES) onlineCount++;
+    else offlineCount++;
+  }
+  const classifiedTotal = onlineCount + offlineCount + faultCount + noDataCount;
+
+  const sites = sitesQuery.data?.items ?? [];
+  const healthBySite = new Map((healthQuery.data?.sites.items ?? []).map((s) => [s.site_id, s]));
+
+  const summaryBarPoints =
+    summaryTab === "energy"
+      ? recentEnergyPoints.map((p) => ({
+          label: new Date(p.period_start).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          value: p.energy_kwh,
+        }))
+      : recentEmissionPoints.map((p) => ({
+          label: new Date(p.period_start).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          value: p.kg_co2,
+        }));
 
   return (
     <div className="flex-1 p-grid-margin space-y-6">
@@ -73,16 +192,35 @@ export function FleetDashboardPage() {
             Your solar fleet {data && data.total_devices - data.online_devices === 0 ? "is performing well" : "needs a look"}
           </h1>
         </div>
-        <WeatherWidget
-          lat={firstSiteWithLocation?.gps_lat}
-          lng={firstSiteWithLocation?.gps_lng}
-          siteName={firstSiteWithLocation?.name ?? firstSiteWithLocation?.site_id}
-        />
+        <div className="flex items-center gap-3">
+          <WeatherWidget
+            lat={primarySiteHasLocation ? primarySite?.gps_lat : undefined}
+            lng={primarySiteHasLocation ? primarySite?.gps_lng : undefined}
+            siteName={primarySite?.name ?? primarySite?.site_id}
+          />
+          <label className="glass-card rounded-full flex items-center gap-2 px-4 py-2.5 cursor-pointer flex-shrink-0" title="Review the dashboard as of this date">
+            <CalendarDays size={16} className="text-on-surface-variant" />
+            <input
+              type="date"
+              max={new Date().toISOString().slice(0, 10)}
+              value={referenceDate.toISOString().slice(0, 10)}
+              onChange={(e) => setReferenceDate(e.target.value ? new Date(`${e.target.value}T12:00:00`) : new Date())}
+              className="bg-transparent text-[13px] text-on-surface outline-none font-data-mono-sm"
+            />
+          </label>
+          <button
+            onClick={downloadFleetSummaryCSV}
+            className="flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-semibold px-4 py-2.5 rounded-full transition-all shadow-soft flex-shrink-0"
+          >
+            <Download size={16} />
+            <span>Export Report</span>
+          </button>
+        </div>
       </div>
 
       {summaryQuery.isLoading || !data ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-gutter">
-          {[0, 1, 2, 3].map((i) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-gutter">
+          {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="h-32 glass-card rounded-xl animate-pulse" />
           ))}
         </div>
@@ -94,13 +232,8 @@ export function FleetDashboardPage() {
       ) : (
         <>
           {/* KPI row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-gutter">
-            <KpiCard
-              label="Total Sites"
-              value={data.total_sites}
-              tone="primary"
-              icon={<HomeIcon size={16} />}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-gutter">
+            <KpiCard label="Total Sites" value={data.total_sites} tone="primary" icon={<HomeIcon size={16} />} />
             <KpiCard
               label="Total Capacity"
               value={data.total_capacity_kw != null ? (data.total_capacity_kw / 1000).toFixed(1) : "—"}
@@ -108,57 +241,254 @@ export function FleetDashboardPage() {
               icon={<Zap size={16} />}
             />
             <KpiCard
-              label="Energy (30d)"
-              value={energyQuery.data ? (energyQuery.data.cumulative_kwh / 1000).toFixed(2) : "—"}
-              unit={energyQuery.data ? "MWh" : undefined}
-              icon={<TrendingUp size={16} />}
-              trendPct={latestTrend}
+              label="Current Generation"
+              value={currentGenQuery.data != null ? currentGenQuery.data.toFixed(1) : "—"}
+              unit={currentGenQuery.data != null ? "kW" : undefined}
+              icon={<Activity size={16} />}
             />
             <KpiCard
-              label="CO2 Offset"
-              value={emissionsQuery.data ? emissionsQuery.data.cumulative_lifetime_co2_tonnes.toFixed(2) : "—"}
-              unit={emissionsQuery.data ? "t" : undefined}
+              label="Energy Today"
+              value={todayEnergyKWh != null ? todayEnergyKWh.toFixed(0) : "—"}
+              unit={todayEnergyKWh != null ? "kWh" : undefined}
+              icon={<TrendingUp size={16} />}
+              trendPct={energyDeltaPct}
+            />
+            <KpiCard
+              label="CO2 Avoided Today"
+              value={todayCO2Kg != null ? todayCO2Kg.toFixed(0) : emissionsUnconfigured ? "—" : "—"}
+              unit={todayCO2Kg != null ? "kg" : undefined}
               icon={<Leaf size={16} />}
+              trendPct={co2DeltaPct}
             />
           </div>
 
-          {/* Capacity ring + Energy Generation chart */}
+          {/* Generation Overview + Fleet Status */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-            <div className="glass-card rounded-xl p-6 flex flex-col items-center justify-center gap-4">
-              <span className="font-label-caps text-label-caps text-on-surface-variant uppercase self-start">Total Capacity</span>
-              <CircularProgress
-                percent={capacityPct}
-                size={140}
-                strokeWidth={14}
-                color="#2f8fe0"
-                value={`${activeSites}/${healthSites.length || data.total_sites}`}
-              />
-              <div className="flex gap-6 text-[12px] text-on-surface-variant">
-                <span><span className="text-primary font-semibold">{activeSites}</span> Active</span>
-                <span><span className="font-semibold">{idleSites}</span> Idle</span>
-              </div>
-            </div>
-
             <div className="lg:col-span-2 glass-card rounded-xl p-6">
-              <div className="flex justify-between items-center mb-4">
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Energy Generation</span>
-                <span className="font-data-display-lg text-[20px] text-on-surface">
-                  {energyQuery.data ? `${energyQuery.data.cumulative_kwh.toFixed(0)} kWh` : "—"}
-                </span>
+              <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Generation Overview</span>
+                <div className="flex gap-1 glass-card rounded-full p-1">
+                  {(["day", "week", "month", "year"] as EnergyTab[]).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setEnergyTab(tab)}
+                      className={`px-3 py-1 rounded-full text-[12px] capitalize transition-colors ${
+                        energyTab === tab ? "bg-primary text-on-primary font-semibold" : "text-on-surface-variant hover:text-on-surface"
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
               </div>
+              <p className="font-data-display-lg text-[20px] text-on-surface mb-2">
+                {energyQuery.data ? `${energyQuery.data.cumulative_kwh.toFixed(0)} kWh` : "—"}
+              </p>
               <div className="h-[180px]">
                 {energyQuery.isLoading ? (
                   <div className="h-full bg-surface-dim rounded-lg animate-pulse" />
                 ) : energyPoints.length < 2 ? (
-                  <EmptyState title="Not enough data yet" body="Energy generation will chart here once there's more history." />
+                  <EmptyState compact title="Not enough data yet" body="Energy generation will chart here once there's more history." />
                 ) : (
                   <LineChart points={energyPoints} color="#2f8fe0" />
                 )}
               </div>
             </div>
+
+            <div className="glass-card rounded-xl p-6 flex flex-col">
+              <span className="font-label-caps text-label-caps text-on-surface-variant uppercase self-start">Fleet Status</span>
+              {devicesQuery.isLoading ? (
+                <div className="flex-1 flex items-center justify-center"><div className="h-24 w-24 rounded-full bg-surface-dim animate-pulse" /></div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-center mt-4">
+                    <CircularProgress
+                      percent={classifiedTotal > 0 ? (onlineCount / classifiedTotal) * 100 : 0}
+                      size={120}
+                      strokeWidth={12}
+                      color="#1a9c6b"
+                      value={String(classifiedTotal)}
+                      label="Devices"
+                    />
+                  </div>
+                  <div className="mt-4 space-y-1.5 text-[12px]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-success flex-shrink-0" />
+                      <span className="text-on-surface-variant">Online</span>
+                      <span className="ml-auto font-semibold text-on-surface font-data-mono-sm">{onlineCount}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-error flex-shrink-0" />
+                      <span className="text-on-surface-variant">Offline</span>
+                      <span className="ml-auto font-semibold text-on-surface font-data-mono-sm">{offlineCount}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-secondary flex-shrink-0" />
+                      <span className="text-on-surface-variant">Fault</span>
+                      <span className="ml-auto font-semibold text-on-surface font-data-mono-sm">{faultCount}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-outline flex-shrink-0" />
+                      <span className="text-on-surface-variant">No Data</span>
+                      <span className="ml-auto font-semibold text-on-surface font-data-mono-sm">{noDataCount}</span>
+                    </div>
+                  </div>
+                  <Link
+                    to="/app/devices"
+                    className="mt-4 text-center text-[12px] font-semibold text-primary hover:underline"
+                  >
+                    View All Devices →
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Environmental Impact + Performance & Health */}
+          {/* Site Map preview + Top Performing Sites */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+            <div className="glass-card rounded-xl p-6">
+              <div className="flex justify-between items-center mb-4">
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Site Map</span>
+              </div>
+              {sitesQuery.isLoading ? (
+                <div className="h-[220px] bg-surface-dim rounded-lg animate-pulse" />
+              ) : (
+                <FleetMiniMap sites={sites} healthBySite={healthBySite} height={220} zoom={5} compact />
+              )}
+              <Link to="/app/map" className="mt-3 block text-center text-[12px] font-semibold text-primary hover:underline">
+                View full map →
+              </Link>
+            </div>
+
+            <div className="lg:col-span-2 glass-card rounded-xl overflow-hidden">
+              <div className="p-6 pb-3">
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Top Performing Sites (Today)</span>
+              </div>
+              {topSitesQuery.isLoading ? (
+                <div className="h-32 mx-6 mb-6 bg-surface-dim rounded-lg animate-pulse" />
+              ) : !topSitesQuery.data || topSitesQuery.data.every((s) => s.energy_kwh === 0) ? (
+                <div className="px-6 pb-6">
+                  <EmptyState compact title="No generation yet today" body="Top sites will rank here once today's readings come in." />
+                </div>
+              ) : (
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="text-left text-on-surface-variant border-t border-outline-variant/60">
+                      <th className="px-6 py-2 font-label-caps text-label-caps">Site</th>
+                      <th className="px-3 py-2 font-label-caps text-label-caps text-right">Generation</th>
+                      <th className="px-3 py-2 font-label-caps text-label-caps text-right">Capacity</th>
+                      <th className="px-6 py-2 font-label-caps text-label-caps text-right">Specific Yield</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topSitesQuery.data.map((s) => (
+                      <tr key={s.site_id} className="border-t border-outline-variant/40 hover:bg-white/50 transition-colors">
+                        <td className="px-6 py-2.5">
+                          <Link to={`/app/sites/${s.site_id}`} className="text-on-surface hover:text-primary transition-colors">
+                            {s.name ?? s.site_id}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface">
+                          {s.energy_kwh.toFixed(1)} kWh
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface-variant">
+                          {s.system_size_kw != null ? `${s.system_size_kw.toFixed(1)} kWp` : "—"}
+                        </td>
+                        <td className="px-6 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface-variant">
+                          {s.specific_yield_kwh_per_kwp.toFixed(2)} kWh/kWp
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* Energy & Emissions Summary + Recent Alerts */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+            <div className="lg:col-span-2 glass-card rounded-xl p-6">
+              <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Energy &amp; Emissions Summary</span>
+                <div className="flex gap-1 glass-card rounded-full p-1">
+                  <button
+                    onClick={() => setSummaryTab("energy")}
+                    className={`px-3 py-1 rounded-full text-[12px] transition-colors ${summaryTab === "energy" ? "bg-primary text-on-primary font-semibold" : "text-on-surface-variant hover:text-on-surface"}`}
+                  >
+                    Energy (kWh)
+                  </button>
+                  <button
+                    onClick={() => setSummaryTab("emissions")}
+                    className={`px-3 py-1 rounded-full text-[12px] transition-colors ${summaryTab === "emissions" ? "bg-primary text-on-primary font-semibold" : "text-on-surface-variant hover:text-on-surface"}`}
+                  >
+                    CO2 Avoided (kg)
+                  </button>
+                </div>
+              </div>
+              <div className="h-[200px]">
+                {(summaryTab === "energy" ? recentEnergyQuery.isLoading : recentEmissionsQuery.isLoading) ? (
+                  <div className="h-full bg-surface-dim rounded-lg animate-pulse" />
+                ) : summaryBarPoints.length === 0 ? (
+                  <EmptyState compact title="Not enough data yet" body="This chart fills in once there's a few days of history." />
+                ) : (
+                  <BarChart
+                    points={summaryBarPoints}
+                    color={summaryTab === "energy" ? "#2f8fe0" : "#1a9c6b"}
+                    height={200}
+                    valueFormatter={(v) => (summaryTab === "energy" ? `${v.toFixed(0)} kWh` : `${v.toFixed(0)} kg`)}
+                  />
+                )}
+              </div>
+              {latestTrend && (
+                <p className="text-[12px] text-on-surface-variant mt-3">
+                  Total this month: <span className="font-semibold text-on-surface">{latestTrend.total_energy_kwh.toFixed(0)} kWh</span>
+                  {latestTrend.mom_change_pct != null && (
+                    <span className={latestTrend.mom_change_pct >= 0 ? "text-success ml-2" : "text-error ml-2"}>
+                      {latestTrend.mom_change_pct >= 0 ? "▲" : "▼"} {Math.abs(latestTrend.mom_change_pct).toFixed(1)}% vs last month
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+
+            <div className="glass-card rounded-xl overflow-hidden flex flex-col">
+              <div className="p-6 pb-3 flex justify-between items-center">
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Recent Alerts</span>
+                <Link to="/app/alerts" className="text-[12px] font-semibold text-primary hover:underline">
+                  View All
+                </Link>
+              </div>
+              {alertsQuery.isLoading ? (
+                <div className="h-32 mx-6 mb-6 bg-surface-dim rounded-lg animate-pulse" />
+              ) : !alertsQuery.data || alertsQuery.data.length === 0 ? (
+                <div className="px-6 pb-6">
+                  <EmptyState compact title="All clear" body="No active alerts right now." />
+                </div>
+              ) : (
+                <div className="divide-y divide-outline-variant/40">
+                  {alertsQuery.data.slice(0, 4).map((alert, i) => {
+                    const Icon = alert.type === "device_fault" ? AlertTriangle : alert.type === "device_revoked" ? ShieldOff : alert.type === "device_offline" ? PowerOff : Info;
+                    return (
+                      <div key={i} className="px-6 py-3 flex items-start gap-3">
+                        <Icon
+                          size={16}
+                          className={`mt-0.5 flex-shrink-0 ${alert.severity === "critical" ? "text-error" : alert.severity === "warning" ? "text-secondary" : "text-on-surface-variant"}`}
+                        />
+                        <div>
+                          <p className="text-[13px] text-on-surface leading-tight">{alert.message}</p>
+                          <p className="text-[11px] text-on-surface-variant mt-0.5">
+                            {alert.site_name ?? alert.site_id} · {new Date(alert.occurred_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Environmental Impact + Performance & Health + Energy Flow */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
             <EnvironmentalImpactPanel cumulativeTonnesCO2={emissionsUnconfigured ? null : emissionsQuery.data?.cumulative_lifetime_co2_tonnes ?? null} />
 
@@ -204,30 +534,6 @@ export function FleetDashboardPage() {
         </>
       )}
 
-      {/* Quick links to sections without dedicated nav/sidebar slots on
-          mobile — see Sidebar.tsx's comment on why. */}
-      <div className="flex flex-wrap gap-3">
-        <Link to="/app/analytics" className="flex items-center gap-2 glass-card rounded-full px-4 py-2 text-on-surface-variant hover:text-primary transition-colors">
-          <BarChart3 size={16} /> <span>Fleet Analytics</span>
-        </Link>
-        <Link to="/app/fleet-health" className="flex items-center gap-2 glass-card rounded-full px-4 py-2 text-on-surface-variant hover:text-primary transition-colors">
-          <HeartPulse size={16} /> <span>Fleet Health</span>
-        </Link>
-        <Link to="/app/audit" className="flex items-center gap-2 glass-card rounded-full px-4 py-2 text-on-surface-variant hover:text-primary transition-colors">
-          <ScrollText size={16} /> <span>Audit Log</span>
-        </Link>
-        <Link to="/app/users/invite" className="flex items-center gap-2 glass-card rounded-full px-4 py-2 text-on-surface-variant hover:text-primary transition-colors">
-          <UserPlus size={16} /> <span>Invite User</span>
-        </Link>
-      </div>
-
-      {/* "Maintenance"/"Billing"/"Reports" nav items from the reference
-          screenshot aren't real features here yet — no backend for
-          scheduled maintenance, invoicing, or a reports-job system
-          exists, so they're deliberately left out rather than added as
-          dead links. Alerts similarly aren't a persisted, actionable
-          feature yet (anomalies are queryable, not pushed) — the bell
-          below is a placeholder for that gap, not a working inbox. */}
       {healthQuery.data && healthQuery.data.fleet.coverage_pct < 50 && (
         <div className="glass-card rounded-xl px-5 py-3 flex items-center gap-3 text-on-surface-variant">
           <Bell size={16} className="text-secondary" />

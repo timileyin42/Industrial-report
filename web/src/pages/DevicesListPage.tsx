@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, Router, FileClock } from "lucide-react";
+import { Plus, Router, FileClock, RefreshCw, Copy, Check, AlertTriangle } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
 import { DataTable, type Column } from "../components/table/DataTable";
 import { StatusBadge } from "../components/status/StatusBadge";
@@ -8,17 +9,37 @@ import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
 import { useAuth } from "../auth/AuthContext";
-import { listDevices } from "../api/devices";
-import { ApiError, type Device } from "../api/types";
+import { listDevices, rotateDeviceSecret } from "../api/devices";
+import { ApiError, type Device, type DeviceWithSecret } from "../api/types";
 import { deriveDeviceStatus } from "../lib/deviceStatus";
 
 export function DevicesListPage() {
   const { session } = useAuth();
   const isOperator = session?.role === "operator";
+  const queryClient = useQueryClient();
+  const [rotatedSecret, setRotatedSecret] = useState<DeviceWithSecret | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [rotateError, setRotateError] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["devices"],
     queryFn: () => listDevices(),
+  });
+
+  // The old secret is invalidated server-side the instant this succeeds
+  // (see internal/registry/devices.go RotateSecret) — this is the ONLY
+  // moment the new one is ever visible, same discipline as registration.
+  const rotateMutation = useMutation({
+    mutationFn: (deviceId: string) => rotateDeviceSecret(deviceId),
+    onSuccess: (device) => {
+      setRotatedSecret(device);
+      setCopied(false);
+      setRotateError(null);
+      queryClient.invalidateQueries({ queryKey: ["devices"] });
+    },
+    onError: (err) => {
+      setRotateError(err instanceof ApiError ? err.message : "Couldn't rotate the secret. Try again.");
+    },
   });
 
   if (isError) {
@@ -47,6 +68,31 @@ export function DevicesListPage() {
       isMono: true,
       render: (d) => (d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "Never"),
     },
+    ...(isOperator
+      ? [
+          {
+            header: "",
+            align: "right" as const,
+            render: (d: Device) => (
+              <button
+                type="button"
+                disabled={rotateMutation.isPending}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Regenerate the secret for ${d.device_id}? The current secret stops working immediately.`)) {
+                    rotateMutation.mutate(d.device_id);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-on-surface-variant hover:text-primary transition-colors disabled:opacity-60"
+                title="Regenerate secret"
+              >
+                <RefreshCw size={14} />
+                <span className="text-[12px]">Regenerate Secret</span>
+              </button>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -74,6 +120,45 @@ export function DevicesListPage() {
             </Link>
           )}
         </div>
+
+        {rotatedSecret && (
+          <div className="glass-card rounded-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={20} className="text-secondary mt-0.5" />
+              <p className="font-body-base text-on-surface-variant">
+                New secret for <strong className="text-on-surface">{rotatedSecret.device_id}</strong> — shown{" "}
+                <strong className="text-on-surface">exactly once</strong>. Copy it now and sync it into the
+                Mosquitto broker; the old secret no longer works.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <code className="flex-1 bg-white/70 border border-outline-variant p-3 rounded-xl font-data-mono-sm text-data-mono-sm text-on-surface break-all">
+                {rotatedSecret.secret}
+              </code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(rotatedSecret.secret);
+                  setCopied(true);
+                }}
+                className="p-3 glass-card rounded-xl hover:text-primary transition-all"
+                title="Copy to clipboard"
+              >
+                {copied ? <Check size={20} className="text-primary" /> : <Copy size={20} />}
+              </button>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setRotatedSecret(null)}
+                className="px-6 py-2.5 bg-primary hover:opacity-90 text-on-primary font-semibold rounded-full transition-all shadow-soft"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+        {rotateError && <p className="font-label-caps text-label-caps text-error">{rotateError}</p>}
 
         {isLoading || !data ? (
           <div className="h-64 glass-card rounded-xl animate-pulse" />

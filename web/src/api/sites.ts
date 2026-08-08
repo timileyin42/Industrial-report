@@ -25,6 +25,15 @@ export async function updateSiteCountry(siteId: string, country: string): Promis
   return SiteSchema.parse(data);
 }
 
+// Marks this site as the fleet's one primary/home site — what the Fleet
+// Dashboard's weather widget resolves its location from. Setting a new
+// one clears the flag from whichever site held it before (server-side,
+// atomic — see internal/registry/sites.go SetPrimary).
+export async function setSitePrimary(siteId: string): Promise<Site> {
+  const data = await apiRequest<unknown>(`/v1/sites/${encodeURIComponent(siteId)}/primary`, { method: "PATCH" });
+  return SiteSchema.parse(data);
+}
+
 export async function listSites(cursor?: string, limit = 50): Promise<{ items: Site[]; nextCursor?: string }> {
   const data = await apiRequest<unknown>("/v1/sites", { query: { cursor, limit } });
   const parsed = PageSchema(SiteSchema).parse(data);
@@ -33,6 +42,15 @@ export async function listSites(cursor?: string, limit = 50): Promise<{ items: S
 
 export async function getSite(siteId: string): Promise<Site> {
   const data = await apiRequest<unknown>(`/v1/sites/${encodeURIComponent(siteId)}`);
+  return SiteSchema.parse(data);
+}
+
+// Backs the Fleet Dashboard's weather widget. Throws (404, surfaced as
+// ApiError) when no site has been marked primary yet — callers must show
+// an explicit "no primary site set" state, never silently fall back to
+// picking any site (see FleetDashboardPage.tsx's WeatherWidget wiring).
+export async function getPrimarySite(): Promise<Site> {
+  const data = await apiRequest<unknown>("/v1/sites/primary");
   return SiteSchema.parse(data);
 }
 

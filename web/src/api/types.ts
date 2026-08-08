@@ -24,6 +24,7 @@ export const SiteSchema = z.object({
   system_size_kw: z.number().nullable().optional(),
   timezone: z.string(),
   country: z.string(),
+  is_primary: z.boolean(),
   created_at: z.string(),
 });
 export type Site = z.infer<typeof SiteSchema>;
@@ -128,6 +129,25 @@ export const CapacityFactorSeriesSchema = z.object({
   points: z.array(CapacityFactorPointSchema),
 });
 export type CapacityFactorSeries = z.infer<typeof CapacityFactorSeriesSchema>;
+
+// Performance Ratio — the weather-adjusted metric Capacity Factor
+// deliberately isn't (see capacityFactorDefinition on the backend).
+// Needs a site to have both gps_lat/gps_lng and system_size_kw; the
+// backend returns a 400 with a specific message for either being
+// missing rather than an empty series, since neither resolves by
+// waiting for more data.
+export const PerformanceRatioPointSchema = z.object({
+  period_start: z.string(),
+  energy_kwh: z.number(),
+  expected_energy_kwh: z.number(),
+  performance_ratio_pct: z.number(),
+});
+export const PerformanceRatioSeriesSchema = z.object({
+  definition: z.string(),
+  period: z.string(),
+  points: z.array(PerformanceRatioPointSchema),
+});
+export type PerformanceRatioSeries = z.infer<typeof PerformanceRatioSeriesSchema>;
 
 // Mirrors internal/registry.EmissionFactor — kg_co2_per_kwh must never be
 // hand-entered on the frontend beyond this exact setup form (see
@@ -290,6 +310,37 @@ export const ExportJobSchema = z.object({
 });
 export type ExportJob = z.infer<typeof ExportJobSchema>;
 export type ExportJobType = ExportJob["job_type"];
+
+export const UserSchema = z.object({
+  id: z.number(),
+  email: z.string(),
+  role: RoleSchema,
+  site_id: z.string().nullable().optional(),
+  created_at: z.string(),
+  disabled_at: z.string().nullable().optional(),
+});
+export type User = z.infer<typeof UserSchema>;
+
+export const CohortSchema = z.object({
+  cohort_id: z.string(),
+  site_count: z.number(),
+  total_capacity_kw: z.number(),
+});
+export type Cohort = z.infer<typeof CohortSchema>;
+
+// Alert types mirror registry.Alert exactly (internal/registry/alerts.go)
+// — every field is derived from a real stored timestamp, never a
+// fabricated event, since there's no persisted alerts table.
+export const AlertSchema = z.object({
+  type: z.enum(["device_offline", "device_fault", "device_revoked", "low_coverage", "low_generation"]),
+  severity: z.enum(["critical", "warning", "info"]),
+  site_id: z.string(),
+  site_name: z.string().nullable().optional(),
+  device_id: z.string().nullable().optional(),
+  message: z.string(),
+  occurred_at: z.string(),
+});
+export type Alert = z.infer<typeof AlertSchema>;
 
 // ApiError carries the HTTP status so callers can distinguish 401 (global
 // redirect) from 403 (AccessDenied) from everything else (ErrorState) —
