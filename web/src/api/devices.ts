@@ -25,6 +25,23 @@ export async function listDevices(
   return { items: parsed.items, nextCursor: parsed.next_cursor };
 }
 
+// Pages through every device rather than capping at one page's worth —
+// the Dashboard's Fleet Status breakdown needs a true total, not
+// whatever the first 200 happen to be (a fleet the size of the load-test
+// site alone already exceeds that). Capped at 20 pages (~4000 devices at
+// the default 200/page) as a runaway-loop backstop, not an expected limit.
+export async function listAllDevices(): Promise<Device[]> {
+  const all: Device[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const { items, nextCursor } = await listDevices({ cursor, limit: 200 });
+    all.push(...items);
+    if (!nextCursor) break;
+    cursor = nextCursor;
+  }
+  return all;
+}
+
 export async function getDevice(deviceId: string): Promise<Device> {
   const data = await apiRequest<unknown>(`/v1/devices/${encodeURIComponent(deviceId)}`);
   return DeviceSchema.parse(data);

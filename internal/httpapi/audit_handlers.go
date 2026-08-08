@@ -84,3 +84,31 @@ func (h *handlers) listAuditActions(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, pageResponse[auditEntryResponse]{Items: out, NextCursor: next})
 }
+
+type chainVerifyResponse struct {
+	Valid         bool   `json:"valid"`
+	MismatchCount int64  `json:"mismatch_count"`
+	FirstBadID    *int64 `json:"first_bad_id,omitempty"`
+}
+
+// verifyAuditActions proves (or disproves) that user_action_audit_log
+// hasn't been tampered with since it was written — concept-note.md §11's
+// "verification-readiness" requirement, not just an append-only
+// convention. Operator-only, same as browsing the log itself.
+func (h *handlers) verifyAuditActions(c echo.Context) error {
+	result, err := h.deps.AuditLog.VerifyChain(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, chainVerifyResponse{Valid: result.Valid, MismatchCount: result.MismatchCount, FirstBadID: result.FirstBadID})
+}
+
+// verifyIngestionAudit is the same check for ingestion_audit_log — the
+// data-quality/verification trail, kept separate per CLAUDE.md.
+func (h *handlers) verifyIngestionAudit(c echo.Context) error {
+	result, err := h.deps.IngestionAudit.VerifyChain(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, chainVerifyResponse{Valid: result.Valid, MismatchCount: result.MismatchCount, FirstBadID: result.FirstBadID})
+}

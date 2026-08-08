@@ -145,7 +145,62 @@ manual entry).
 
 ---
 
-## 4. Resend — already done
+## 4. MQTT broker admin (device credential automation)
+
+Used for: automatically syncing a device's credential into Mosquitto's
+`dynamic-security` plugin the instant it's registered/rotated/revoked —
+see `internal/mqttadmin/dynsec.go`. No external account/signup needed,
+this is entirely self-hosted infrastructure you already run.
+
+### 4.1 Generate the admin password
+
+```bash
+openssl rand -base64 24
+```
+
+### 4.2 Fill in `.env`
+
+```
+MOSQUITTO_DYNSEC_PASSWORD=<the generated password>
+MQTT_ADMIN_USERNAME=admin
+MQTT_ADMIN_PASSWORD=<the same generated password>
+```
+
+`MOSQUITTO_DYNSEC_PASSWORD` sets this on the broker container's very
+first start (it self-bootstraps an `admin` account); `MQTT_ADMIN_USERNAME`/
+`PASSWORD` is what the API connects to the broker with as that same
+account — they must describe one account, which is why both env vars
+hold the same password.
+
+If left unset, device registration/rotation/revocation still works, just
+without the broker sync — the API tells you so via a
+`broker_sync_warning` field on the response instead of failing silently.
+
+## 5. MQTT public broker address (device setup QR code) — frontend only
+
+Used for: the QR code shown once at device registration/rotation
+(`web/src/components/devices/DeviceQRCode.tsx`) — lets an installer scan
+the broker address, device ID, and secret with a phone camera instead of
+typing a 40+ character secret into a datalogger by hand. Purely a
+display convenience; nothing breaks if this is left unset, the QR code
+just omits the broker line.
+
+**This is not the same value as `MQTT_BROKER_URL`** in the root `.env` —
+that one points at the docker-compose service name `mosquitto`, only
+reachable from inside the Docker network. This one needs to be whatever
+address a physical device out in the field can actually dial — your
+server's public IP or a DNS record for it, **not proxied through
+Cloudflare** (Cloudflare's standard proxy only forwards HTTP(S) traffic,
+not arbitrary MQTT/TCP — this DNS record needs the grey cloud/DNS-only
+setting, or just use the raw IP).
+
+### Fill in `web/.env`
+
+```
+VITE_MQTT_PUBLIC_BROKER_URL=mqtt://<your-server-ip-or-unproxied-domain>:1883
+```
+
+## 6. Resend — already done
 
 You've already set this up on your end. For completeness, the two env
 vars it needs in `.env` are:

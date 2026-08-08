@@ -68,4 +68,9 @@ func toDeviceResponse(d db.Device) deviceResponse {
 type deviceSecretResponse struct {
 	deviceResponse
 	Secret string `json:"secret"`
+	// BrokerSyncWarning is set when this secret was NOT successfully
+	// synced into the MQTT broker's credential store — the device
+	// record above is real, but the device cannot yet authenticate.
+	// See internal/registry.RegisteredDevice.BrokerSyncWarning.
+	BrokerSyncWarning *string `json:"broker_sync_warning,omitempty"`
 }

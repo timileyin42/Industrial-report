@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { HomeIcon, Zap, Leaf, TrendingUp, Activity, Bell, Download, AlertTriangle, PowerOff, ShieldOff, Info, CalendarDays } from "lucide-react";
+import { TopNav } from "../components/layout/TopNav";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { CircularProgress } from "../components/kpi/CircularProgress";
 import { WeatherWidget } from "../components/dashboard/WeatherWidget";
@@ -20,9 +21,9 @@ import { getFleetTrends } from "../api/benchmark";
 import { getFleetEmissions } from "../api/emissions";
 import { getFleetHealth } from "../api/fleetHealth";
 import { getPrimarySite, listSites } from "../api/sites";
-import { listDevices } from "../api/devices";
+import { listAllDevices } from "../api/devices";
 import { listFleetAlerts } from "../api/alerts";
-import { downloadFleetSummaryCSV } from "../api/exports";
+import { downloadFleetSummaryCSV, downloadFleetSummaryPDF } from "../api/exports";
 import { ApiError } from "../api/types";
 
 // Light/glass redesign — replaces the earlier dark-industrial Fleet
@@ -104,7 +105,7 @@ export function FleetDashboardPage() {
   // SetPrimary / SiteDetailPage.tsx's "Set as Primary" action.
   const primarySiteQuery = useQuery({ queryKey: ["primary-site"], queryFn: getPrimarySite, retry: false });
   const sitesQuery = useQuery({ queryKey: ["dashboard-sites"], queryFn: () => listSites(undefined, 200) });
-  const devicesQuery = useQuery({ queryKey: ["dashboard-devices"], queryFn: () => listDevices({ limit: 200 }) });
+  const devicesQuery = useQuery({ queryKey: ["dashboard-devices"], queryFn: listAllDevices });
   const alertsQuery = useQuery({ queryKey: ["dashboard-alerts"], queryFn: () => listFleetAlerts(50) });
   const topSitesQuery = useQuery({ queryKey: ["top-sites-today"], queryFn: () => getTopSitesToday(5) });
 
@@ -142,7 +143,7 @@ export function FleetDashboardPage() {
   // "No Data" (never reported) is distinguished from "Offline" (has
   // reported before, gone quiet) since they mean different things.
   // Revoked devices are excluded — that's its own state, shown elsewhere.
-  const devices = devicesQuery.data?.items ?? [];
+  const devices = devicesQuery.data ?? [];
   const faultDeviceIds = new Set(
     (alertsQuery.data ?? []).filter((a) => a.type === "device_fault" && a.device_id).map((a) => a.device_id as string)
   );
@@ -181,7 +182,9 @@ export function FleetDashboardPage() {
         }));
 
   return (
-    <div className="flex-1 p-grid-margin space-y-6">
+    <>
+      <TopNav title="Dashboard" />
+      <div className="flex-1 p-grid-margin space-y-6">
       {/* Greeting header + weather widget */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -213,7 +216,14 @@ export function FleetDashboardPage() {
             className="flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-semibold px-4 py-2.5 rounded-full transition-all shadow-soft flex-shrink-0"
           >
             <Download size={16} />
-            <span>Export Report</span>
+            <span>Export Report (CSV)</span>
+          </button>
+          <button
+            onClick={downloadFleetSummaryPDF}
+            className="flex items-center gap-2 glass-card hover:text-primary text-on-surface font-semibold px-4 py-2.5 rounded-full transition-all flex-shrink-0"
+          >
+            <Download size={16} />
+            <span>Export Report (PDF)</span>
           </button>
         </div>
       </div>
@@ -546,6 +556,7 @@ export function FleetDashboardPage() {
           </span>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

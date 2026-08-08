@@ -14,7 +14,7 @@ import { getSiteEnergy, getSiteSpecificYield, getSitePeak, getSiteCapacityFactor
 import { getSiteEmissions } from "../api/emissions";
 import { getCompareHistory, getCompareFleet } from "../api/benchmark";
 import { getSiteAnomalies } from "../api/anomalies";
-import { downloadSiteTelemetryCSV, downloadSiteSummaryCSV } from "../api/exports";
+import { downloadSiteTelemetryCSV, downloadSiteSummaryCSV, downloadSiteSummaryPDF } from "../api/exports";
 import { getSite } from "../api/sites";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, type AnomalyResult } from "../api/types";
@@ -69,13 +69,12 @@ export function SiteAnalyticsPage() {
   if (anyError instanceof ApiError && anyError.status === 403) {
     return <AccessDenied detail="This site isn't part of your account's access scope." />;
   }
-  if (siteQuery.isError || energyQuery.isError || yieldQuery.isError || peakQuery.isError || cfQuery.isError) {
+  if (siteQuery.isError || energyQuery.isError || peakQuery.isError || cfQuery.isError) {
     return (
       <ErrorState
         onRetry={() => {
           siteQuery.refetch();
           energyQuery.refetch();
-          yieldQuery.refetch();
           peakQuery.refetch();
           cfQuery.refetch();
         }}
@@ -122,6 +121,7 @@ export function SiteAnalyticsPage() {
         <div className="flex flex-wrap justify-end gap-2">
           <ExportButton label="Export Telemetry CSV" onExport={() => downloadSiteTelemetryCSV(siteId!)} />
           <ExportButton label="Export Summary CSV" onExport={() => downloadSiteSummaryCSV(siteId!)} />
+          <ExportButton label="Export Summary PDF" onExport={() => downloadSiteSummaryPDF(siteId!)} />
           <AsyncExportButton label="Queue Telemetry Export" input={{ job_type: "site_telemetry_csv", site_id: siteId! }} />
         </div>
 

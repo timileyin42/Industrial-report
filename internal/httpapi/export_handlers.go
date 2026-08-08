@@ -11,6 +11,11 @@ import (
 	"github.com/timileyin42/zgnis-solar/internal/registry"
 )
 
+func servePDF(c echo.Context, filename string, data []byte) error {
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	return c.Blob(http.StatusOK, "application/pdf", data)
+}
+
 // maxExportRangeDays bounds every CSV export — an unbounded date range on
 // an export endpoint is exactly the kind of "fine for now" gap CLAUDE.md
 // warns becomes a production problem at scale.
@@ -124,6 +129,59 @@ func (h *handlers) siteSummaryCSV(c echo.Context) error {
 	}
 	w.Flush()
 	return nil
+}
+
+// siteSummaryPDF is siteSummaryCSV's PDF counterpart — same data, a
+// human-readable report shape instead of a data-shape file (see
+// registry/export_pdf.go).
+func (h *handlers) siteSummaryPDF(c echo.Context) error {
+	period, err := parsePeriod(c)
+	if err != nil {
+		return err
+	}
+	from, to, err := parseAnalyticsRange(c)
+	if err != nil {
+		return err
+	}
+	if err := validateExportRange(from, to); err != nil {
+		return err
+	}
+	siteID := c.Param("site_id")
+
+	series, err := h.deps.Analytics.SiteEnergy(c.Request().Context(), siteID, period, from, to)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	data := registry.BuildSiteEnergySummaryPDF(siteID, period, from, to, series)
+	return servePDF(c, fmt.Sprintf("%s-summary.pdf", siteID), data)
+}
+
+// fleetSummaryPDF is fleetSummaryCSV's PDF counterpart — operator-only.
+func (h *handlers) fleetSummaryPDF(c echo.Context) error {
+	period, err := parsePeriod(c)
+	if err != nil {
+		return err
+	}
+	from, to, err := parseAnalyticsRange(c)
+	if err != nil {
+		return err
+	}
+	if err := validateExportRange(from, to); err != nil {
+		return err
+	}
+	var cohortID *string
+	if v := c.QueryParam("cohort_id"); v != "" {
+		cohortID = &v
+	}
+
+	series, err := h.deps.Analytics.FleetEnergy(c.Request().Context(), cohortID, period, from, to)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	data := registry.BuildFleetEnergySummaryPDF(period, from, to, series)
+	return servePDF(c, "fleet-summary.pdf", data)
 }
 
 // fleetSummaryCSV streams a fleet-wide (optionally cohort-scoped) period

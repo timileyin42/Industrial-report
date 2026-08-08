@@ -3,12 +3,14 @@ package registry
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/timileyin42/zgnis-solar/internal/auth"
 	"github.com/timileyin42/zgnis-solar/internal/db"
+	"github.com/timileyin42/zgnis-solar/internal/mqttadmin"
 	"github.com/timileyin42/zgnis-solar/internal/pagination"
 )
 
@@ -16,10 +18,15 @@ type Devices struct {
 	q                *db.Queries
 	onlineThreshold  time.Duration
 	expectedInterval time.Duration
+	// mqttAdmin is nil when MQTT_ADMIN_USERNAME/PASSWORD aren't set —
+	// the same "optional, additive infra" pattern as R2/email. A nil
+	// client means broker credential sync is skipped (logged loudly),
+	// not that Register/RotateSecret/Revoke fail.
+	mqttAdmin *mqttadmin.Client
 }
 
-func NewDevices(q *db.Queries, onlineThreshold, expectedInterval time.Duration) *Devices {
-	return &Devices{q: q, onlineThreshold: onlineThreshold, expectedInterval: expectedInterval}
+func NewDevices(q *db.Queries, onlineThreshold, expectedInterval time.Duration, mqttAdmin *mqttadmin.Client) *Devices {
+	return &Devices{q: q, onlineThreshold: onlineThreshold, expectedInterval: expectedInterval, mqttAdmin: mqttAdmin}
 }
 
 var ErrUnknownSite = errors.New("site does not exist")
@@ -36,6 +43,15 @@ type RegisterDeviceInput struct {
 type RegisteredDevice struct {
 	Device db.Device
 	Secret string
+	// BrokerSyncWarning is set when the device's own database record was
+	// created successfully but syncing its credential into Mosquitto's
+	// dynamic-security plugin failed (or wasn't configured at all) — the
+	// device secret above is real and correctly hashed/stored, but the
+	// device will not be able to authenticate to the broker until this
+	// is resolved (see internal/mqttadmin). Never blocks the registration
+	// itself, same principle as an email-send failure never rolling back
+	// the invite it was sent for.
+	BrokerSyncWarning *string
 }
 
 func (d *Devices) Register(ctx context.Context, actorUserID int64, in RegisterDeviceInput) (RegisteredDevice, error) {
@@ -68,7 +84,17 @@ func (d *Devices) Register(ctx context.Context, actorUserID int64, in RegisterDe
 		return RegisteredDevice{}, err
 	}
 	recordAction(ctx, d.q, actorUserID, "device.register", "device", device.DeviceID, map[string]any{"site_id": in.SiteID})
-	return RegisteredDevice{Device: device, Secret: secret}, nil
+
+	result := RegisteredDevice{Device: device, Secret: secret}
+	if d.mqttAdmin == nil {
+		msg := "MQTT broker sync isn't configured (MQTT_ADMIN_USERNAME/PASSWORD unset) — this device's credential must be added to Mosquitto manually before it can publish telemetry."
+		result.BrokerSyncWarning = &msg
+	} else if err := d.mqttAdmin.CreateDevice(ctx, device.DeviceID, secret); err != nil {
+		log.Printf("mqttadmin: failed to sync device %s to broker: %v", device.DeviceID, err)
+		msg := "This device was registered, but syncing its credential into the MQTT broker failed — it will not be able to authenticate until this is retried (see server logs)."
+		result.BrokerSyncWarning = &msg
+	}
+	return result, nil
 }
 
 func (d *Devices) Get(ctx context.Context, deviceID string) (db.Device, error) {
@@ -155,12 +181,21 @@ func (d *Devices) List(ctx context.Context, siteFilter *string, cursorToken stri
 	return devices, next, nil
 }
 
+// Revoke blocks a device at the app layer (ingestor's revoked_at check)
+// regardless of whether the broker-side deletion below succeeds — that
+// check is the primary enforcement, this is defense in depth, so a
+// broker sync failure here is logged loudly but never fails the call.
 func (d *Devices) Revoke(ctx context.Context, actorUserID int64, deviceID string) (db.Device, error) {
 	device, err := d.q.RevokeDevice(ctx, deviceID)
 	if err != nil {
 		return db.Device{}, err
 	}
 	recordAction(ctx, d.q, actorUserID, "device.revoke", "device", deviceID, nil)
+	if d.mqttAdmin != nil {
+		if err := d.mqttAdmin.DeleteDevice(ctx, deviceID); err != nil {
+			log.Printf("mqttadmin: failed to delete revoked device %s from broker: %v", deviceID, err)
+		}
+	}
 	return device, nil
 }
 
@@ -178,5 +213,15 @@ func (d *Devices) RotateSecret(ctx context.Context, actorUserID int64, deviceID 
 		return RegisteredDevice{}, err
 	}
 	recordAction(ctx, d.q, actorUserID, "device.rotate_secret", "device", deviceID, nil)
-	return RegisteredDevice{Device: device, Secret: secret}, nil
+
+	result := RegisteredDevice{Device: device, Secret: secret}
+	if d.mqttAdmin == nil {
+		msg := "MQTT broker sync isn't configured (MQTT_ADMIN_USERNAME/PASSWORD unset) — update this device's credential in Mosquitto manually or it will stop authenticating."
+		result.BrokerSyncWarning = &msg
+	} else if err := d.mqttAdmin.SetDevicePassword(ctx, deviceID, secret); err != nil {
+		log.Printf("mqttadmin: failed to sync rotated secret for device %s to broker: %v", deviceID, err)
+		msg := "The secret was rotated, but syncing it into the MQTT broker failed — this device will be unable to authenticate until this is retried (see server logs)."
+		result.BrokerSyncWarning = &msg
+	}
+	return result, nil
 }

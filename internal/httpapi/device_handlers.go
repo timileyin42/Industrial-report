@@ -37,8 +37,9 @@ func (h *handlers) registerDevice(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, deviceSecretResponse{
-		deviceResponse: toDeviceResponse(result.Device),
-		Secret:         result.Secret,
+		deviceResponse:    toDeviceResponse(result.Device),
+		Secret:            result.Secret,
+		BrokerSyncWarning: result.BrokerSyncWarning,
 	})
 }
 
@@ -92,7 +93,8 @@ func (h *handlers) rotateDeviceSecret(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "device not found")
 	}
 	return c.JSON(http.StatusOK, deviceSecretResponse{
-		deviceResponse: toDeviceResponse(result.Device),
-		Secret:         result.Secret,
+		deviceResponse:    toDeviceResponse(result.Device),
+		Secret:            result.Secret,
+		BrokerSyncWarning: result.BrokerSyncWarning,
 	})
 }

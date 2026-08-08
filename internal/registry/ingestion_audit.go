@@ -126,3 +126,13 @@ func (a *IngestionAudit) List(ctx context.Context, in ListIngestionAuditInput) (
 	}
 	return entries, next, nil
 }
+
+// VerifyChain re-derives the hash chain migrations/0013 wrote at insert
+// time and reports whether it still matches.
+func (a *IngestionAudit) VerifyChain(ctx context.Context) (ChainVerifyResult, error) {
+	row, err := a.q.VerifyIngestionAuditChain(ctx)
+	if err != nil {
+		return ChainVerifyResult{}, err
+	}
+	return toChainVerifyResult(row.MismatchCount, row.FirstBadID), nil
+}

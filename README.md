@@ -46,14 +46,26 @@ docker compose up -d
 
 See `docs/tls.md` for what this does and doesn't cover.
 
-## 2. Create MQTT credentials
+## 2. MQTT credentials are automatic now
 
-```bash
-# First entry needs -c to create the file
-docker exec zgnis-mosquitto mosquitto_passwd -c -b /mosquitto/config/passwd ingestor-service supersecret
-docker exec zgnis-mosquitto mosquitto_passwd -b /mosquitto/config/passwd ZG-0001 devicesecret
-docker restart zgnis-mosquitto
-```
+Mosquitto auth/ACLs run on the `dynamic-security` plugin (see
+`internal/mqttadmin/dynsec.go`), not a static password file — nothing to
+run by hand here anymore:
+
+- Set `MOSQUITTO_DYNSEC_PASSWORD` / `MQTT_ADMIN_USERNAME` /
+  `MQTT_ADMIN_PASSWORD` in `.env` before first bringing the stack up
+  (see `.env.example`) — that's the broker's one-time admin bootstrap.
+- On its first startup, the API automatically provisions the ingestor's
+  own broker credential (from `MQTT_USERNAME`/`MQTT_PASSWORD`) and the
+  shared `device`/`ingestor` roles.
+- Every device registered, rotated, or revoked through the dashboard/API
+  gets its broker credential synced automatically at that moment — see
+  the `Register a device` step below, no separate manual command needed.
+
+If `MQTT_ADMIN_USERNAME`/`PASSWORD` are left unset, everything above is
+skipped (not fatal) and you're back to the old manual flow — the API
+will tell you so via a `broker_sync_warning` field on the
+register/rotate response.
 
 ## 3. Run migrations
 
@@ -168,13 +180,12 @@ TOKEN=$(curl -s -X POST localhost:8080/v1/auth/login -H "Content-Type: applicati
 curl -s -X POST localhost:8080/v1/sites -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"site_id":"SITE-0002","name":"Test Site B","timezone":"Africa/Lagos","system_size_kw":5.0}'
 
-# Register a device — capture the plaintext secret, shown exactly once
+# Register a device — capture the plaintext secret, shown exactly once.
+# Its broker credential is synced automatically (internal/mqttadmin) —
+# no separate mosquitto_passwd step. Check .secret vs .broker_sync_warning
+# in the response if you want to confirm the sync actually succeeded.
 SECRET=$(curl -s -X POST localhost:8080/v1/devices -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"device_id":"ZG-0002","site_id":"SITE-0002"}' | jq -r .secret)
-
-# Manual step (deliberately not automated — see AGENTS.md item 1): sync the
-# secret into the Mosquitto password file so the device can actually connect.
-docker exec zgnis-mosquitto mosquitto_passwd -b /mosquitto/config/passwd ZG-0002 "$SECRET"
 docker restart zgnis-mosquitto
 
 curl -s localhost:8080/v1/fleet/summary -H "Authorization: Bearer $TOKEN"
@@ -229,8 +240,7 @@ curl -s -X POST localhost:8080/v1/sites -H "Authorization: Bearer $TOKEN" -H "Co
   -d '{"site_id":"SITE-SMALL","name":"Small Site","timezone":"Africa/Lagos","system_size_kw":2.0}'
 SECRET=$(curl -s -X POST localhost:8080/v1/devices -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"device_id":"ZG-SMALL","site_id":"SITE-SMALL"}' | jq -r .secret)
-docker exec zgnis-mosquitto mosquitto_passwd -b /mosquitto/config/passwd ZG-SMALL "$SECRET"
-docker restart zgnis-mosquitto
+# Broker credential is already synced automatically — connect right away.
 
 docker exec zgnis-mosquitto mosquitto_pub -h localhost -u ZG-SMALL -P "$SECRET" \
   -t devices/ZG-SMALL/telemetry \
@@ -422,10 +432,10 @@ nothing left to build until a real dashboard origin exists.
 - Ingestor-side device secret verification — the ingestor still trusts the
   Mosquitto broker's own auth; `secret_hash` is used by the registry for
   issuance/rotation only (adding payload-level secret verification would be
-  a protocol change, out of scope so far)
-- Automated broker credential provisioning — syncing a newly issued device
-  secret into Mosquitto's password file is still a manual `mosquitto_passwd`
-  step (AGENTS.md item 1: not automated yet, by design)
+  a protocol change, out of scope so far). Broker credential provisioning
+  itself IS automated now (`internal/mqttadmin`, dynamic-security plugin) —
+  registering/rotating/revoking a device syncs its broker credential live,
+  no manual `mosquitto_passwd`/restart step anymore.
 - Automated alert emails (e.g. "device offline") — email delivery now
   exists (invites, password reset), but there's no scheduler/cron and no
   dedup logic to avoid re-notifying on every check; still queryable state

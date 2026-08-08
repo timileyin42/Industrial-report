@@ -169,6 +169,17 @@ type Querier interface {
 	// pre-existing row (see migrations/0010_site_country.sql).
 	UpdateSiteCountry(ctx context.Context, arg UpdateSiteCountryParams) (Site, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
+	// Recomputes each row's expected hash using the exact same expression as
+	// the ingestion_audit_log_chain() trigger (migrations/0013) and compares
+	// against what's actually stored — done entirely in SQL so the digest()
+	// call here is byte-for-byte the same one that wrote the hash, avoiding
+	// any cross-language JSON/text canonicalization mismatch a Go-side
+	// recompute would risk. lag() over id order gives each row's expected
+	// prev_hash without a second table scan.
+	VerifyIngestionAuditChain(ctx context.Context) (VerifyIngestionAuditChainRow, error)
+	// Same approach as VerifyIngestionAuditChain, against
+	// user_action_audit_log_chain()'s expression instead.
+	VerifyUserActionAuditChain(ctx context.Context) (VerifyUserActionAuditChainRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

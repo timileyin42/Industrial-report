@@ -72,11 +72,15 @@ type FleetHealth struct {
 }
 
 type SiteHealth struct {
-	SiteID          string
-	SiteName        *string
-	TotalDevices    int64
-	OnlineDevices   int64
-	CoveragePct     float64
+	SiteID        string
+	SiteName      *string
+	SiteCreatedAt time.Time
+	TotalDevices  int64
+	OnlineDevices int64
+	CoveragePct   float64
+	// WorstLastSeenAt is nil when every device at this site has never
+	// reported even once — SiteCreatedAt (always real) is the fallback
+	// anchor for that case, used by Alerts.Fleet.
 	WorstLastSeenAt *time.Time
 }
 
@@ -129,6 +133,7 @@ func (f *Fleet) Health(ctx context.Context, cursorToken string, limit int) (Flee
 		sites = append(sites, SiteHealth{
 			SiteID:          r.SiteID,
 			SiteName:        textPtr(r.SiteName),
+			SiteCreatedAt:   r.SiteCreatedAt.Time,
 			TotalDevices:    r.TotalDevices,
 			OnlineDevices:   r.OnlineDevices,
 			CoveragePct:     coveragePct(r.ActualReadings, r.ExpectedReadings),

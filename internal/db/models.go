@@ -61,6 +61,8 @@ const (
 	ExportJobTypeSiteTelemetryCsv ExportJobType = "site_telemetry_csv"
 	ExportJobTypeSiteSummaryCsv   ExportJobType = "site_summary_csv"
 	ExportJobTypeFleetSummaryCsv  ExportJobType = "fleet_summary_csv"
+	ExportJobTypeSiteSummaryPdf   ExportJobType = "site_summary_pdf"
+	ExportJobTypeFleetSummaryPdf  ExportJobType = "fleet_summary_pdf"
 )
 
 func (e *ExportJobType) Scan(src interface{}) error {
@@ -267,6 +269,8 @@ type IngestionAuditLog struct {
 	ReceivedAt pgtype.Timestamptz
 	Processed  bool
 	Error      pgtype.Text
+	PrevHash   pgtype.Text
+	EntryHash  pgtype.Text
 }
 
 type Invite struct {
@@ -348,4 +352,6 @@ type UserActionAuditLog struct {
 	TargetID    pgtype.Text
 	Metadata    []byte
 	CreatedAt   pgtype.Timestamptz
+	PrevHash    pgtype.Text
+	EntryHash   pgtype.Text
 }

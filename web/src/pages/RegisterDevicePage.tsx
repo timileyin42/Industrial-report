@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Copy, Check, AlertTriangle } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
+import { DeviceQRCode } from "../components/devices/DeviceQRCode";
 import { registerDevice } from "../api/devices";
 import { listSites } from "../api/sites";
 import { ApiError, type DeviceWithSecret } from "../api/types";
@@ -47,16 +48,27 @@ export function RegisterDevicePage() {
     return (
       <>
         <TopNav title="Device Registered" />
-        <div className="flex-1 p-grid-margin max-w-2xl w-full">
+        <div className="flex-1 p-grid-margin max-w-4xl w-full">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6 items-start">
           <div className="glass-card rounded-2xl p-6 space-y-6">
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} className="text-secondary mt-0.5" />
               <p className="font-body-base text-on-surface-variant">
-                This secret is shown <strong className="text-on-surface">exactly once</strong>. Copy it now and
-                sync it into the Mosquitto broker — it will never be shown again. If it's lost, rotate it for a
-                new one.
+                This secret is shown <strong className="text-on-surface">exactly once</strong> — it will never be
+                shown again. If it's lost, rotate it for a new one from the Devices page.
               </p>
             </div>
+            {result.broker_sync_warning ? (
+              <div className="flex items-start gap-3 bg-secondary-container/40 border border-secondary rounded-xl p-4">
+                <AlertTriangle size={20} className="text-secondary mt-0.5 flex-shrink-0" />
+                <p className="font-body-base text-[13px] text-on-surface-variant">{result.broker_sync_warning}</p>
+              </div>
+            ) : (
+              <p className="text-[13px] text-success">
+                This device's credential was automatically synced to the MQTT broker — it's ready to connect and
+                publish telemetry.
+              </p>
+            )}
             <div>
               <p className={labelClass}>DEVICE ID</p>
               <p className="font-data-mono-sm text-data-mono-sm text-primary">{result.device_id}</p>
@@ -88,6 +100,8 @@ export function RegisterDevicePage() {
                 Done
               </Link>
             </div>
+          </div>
+          <DeviceQRCode deviceId={result.device_id} secret={result.secret} />
           </div>
         </div>
       </>

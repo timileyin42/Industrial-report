@@ -13,13 +13,26 @@ const TYPE_ICON = {
   low_generation: Info,
 } as const;
 
-// Real badge count AND real preview list from the same Alerts feed
-// /app/alerts shows in full (internal/registry/alerts.go) — never a
-// decorative fixed number or fabricated entries.
+const LAST_VIEWED_KEY = "cea.alertsLastViewedAt";
+
+// There's no persisted alerts table (see internal/registry/alerts.go) —
+// every alert is a currently-true condition recomputed on each fetch, so
+// there's no real "mark as read" to track server-side. What IS honest
+// and real: the badge only counts alerts that occurred after the last
+// time you opened this dropdown, tracked client-side. Opening it clears
+// the badge; it only climbs again for alerts genuinely newer than that
+// — never a fabricated "read" state on data that has none.
 export function NotificationBell() {
   const { session } = useAuth();
   const isOperator = session?.role === "operator";
   const [open, setOpen] = useState(false);
+  const [lastViewedAt, setLastViewedAt] = useState(() => {
+    try {
+      return Number(localStorage.getItem(LAST_VIEWED_KEY) ?? 0);
+    } catch {
+      return 0;
+    }
+  });
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery({
@@ -39,13 +52,30 @@ export function NotificationBell() {
 
   if (!isOperator) return null;
 
-  const count = data?.length ?? 0;
+  const count = (data ?? []).filter((a) => new Date(a.occurred_at).getTime() > lastViewedAt).length;
   const preview = (data ?? []).slice(0, 5);
+
+  function handleToggle() {
+    setOpen((v) => {
+      const next = !v;
+      if (next) {
+        const now = Date.now();
+        setLastViewedAt(now);
+        try {
+          localStorage.setItem(LAST_VIEWED_KEY, String(now));
+        } catch {
+          // localStorage unavailable — badge just won't stay cleared
+          // across a reload, not worth failing over.
+        }
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="relative" ref={containerRef}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         className="relative glass-card rounded-full p-2.5 text-on-surface-variant hover:text-primary transition-colors"
         title="Alerts"
       >

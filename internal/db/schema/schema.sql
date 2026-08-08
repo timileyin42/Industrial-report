@@ -5,6 +5,10 @@
 -- of truth for actual schema changes. Keep this in sync whenever a
 -- migration adds/changes a table sqlc needs to know about.
 
+-- see migrations/0013_audit_log_tamper_evidence.sql — needed for digest()
+-- used by the audit-log verification queries below.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE sites (
     site_id             text PRIMARY KEY,
     cohort_id           text,
@@ -58,7 +62,10 @@ CREATE TABLE ingestion_audit_log (
     raw_payload  jsonb NOT NULL,
     received_at  timestamptz NOT NULL DEFAULT now(),
     processed    boolean NOT NULL DEFAULT false,
-    error        text
+    error        text,
+    -- prev_hash/entry_hash: see migrations/0013_audit_log_tamper_evidence.sql
+    prev_hash    text,
+    entry_hash   text
 );
 
 CREATE TYPE user_role AS ENUM ('operator', 'restricted');
@@ -80,7 +87,10 @@ CREATE TABLE user_action_audit_log (
     target_type   text,
     target_id     text,
     metadata      jsonb,
-    created_at    timestamptz NOT NULL DEFAULT now()
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    -- prev_hash/entry_hash: see migrations/0013_audit_log_tamper_evidence.sql
+    prev_hash     text,
+    entry_hash    text
 );
 
 -- sqlc-only stand-in for the real migration's continuous aggregate
@@ -131,7 +141,8 @@ CREATE TABLE password_reset_tokens (
 
 -- mirrors migrations/0008_export_jobs.sql
 CREATE TYPE export_job_status AS ENUM ('pending', 'running', 'completed', 'failed');
-CREATE TYPE export_job_type AS ENUM ('site_telemetry_csv', 'site_summary_csv', 'fleet_summary_csv');
+-- site_summary_pdf/fleet_summary_pdf added by migrations/0012_export_job_pdf.sql
+CREATE TYPE export_job_type AS ENUM ('site_telemetry_csv', 'site_summary_csv', 'fleet_summary_csv', 'site_summary_pdf', 'fleet_summary_pdf');
 
 CREATE TABLE export_jobs (
     id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

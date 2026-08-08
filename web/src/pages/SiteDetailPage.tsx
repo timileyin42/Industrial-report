@@ -14,7 +14,7 @@ import { MapEmbed } from "../components/map/MapEmbed";
 import { useAuth } from "../auth/AuthContext";
 import { getSite, updateSiteCountry, setSitePrimary } from "../api/sites";
 import { listSiteTelemetry } from "../api/telemetry";
-import { downloadSiteTelemetryCSV, downloadSiteSummaryCSV } from "../api/exports";
+import { downloadSiteTelemetryCSV, downloadSiteSummaryCSV, downloadSiteSummaryPDF } from "../api/exports";
 import { ApiError } from "../api/types";
 
 // References: design/site_detail_lagos_central_hub_zgnis/code.html,
@@ -195,6 +195,7 @@ export function SiteDetailPage() {
         <div className="flex flex-wrap justify-end gap-2">
           <ExportButton label="Export Telemetry CSV" onExport={() => downloadSiteTelemetryCSV(site.site_id)} />
           <ExportButton label="Export Summary CSV" onExport={() => downloadSiteSummaryCSV(site.site_id)} />
+          <ExportButton label="Export Summary PDF" onExport={() => downloadSiteSummaryPDF(site.site_id)} />
           {/* Async alternative for ranges too large for a synchronous
               request to finish comfortably — same data, queued instead. */}
           <AsyncExportButton label="Queue Telemetry Export" input={{ job_type: "site_telemetry_csv", site_id: site.site_id }} />

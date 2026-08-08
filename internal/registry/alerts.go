@@ -67,7 +67,14 @@ func (al *Alerts) Fleet(ctx context.Context, limit int) ([]Alert, error) {
 		offlineCount := s.TotalDevices - s.OnlineDevices
 		switch {
 		case offlineCount > 0:
-			occurredAt := now
+			// WorstLastSeenAt is nil when every device at this site has
+			// never reported even once — SiteCreatedAt (always real, from
+			// the sites table) is the final fallback, so this alert still
+			// gets a stable timestamp instead of "now" reappearing fresh
+			// on every fetch (this whole feed is recomputed live, never
+			// read from a persisted table) and defeating the notification
+			// bell's "seen since last check" badge.
+			occurredAt := s.SiteCreatedAt
 			if s.WorstLastSeenAt != nil {
 				occurredAt = *s.WorstLastSeenAt
 			}
@@ -78,11 +85,16 @@ func (al *Alerts) Fleet(ctx context.Context, limit int) ([]Alert, error) {
 				OccurredAt: occurredAt,
 			})
 		case s.CoveragePct < 50:
+			// Same fallback chain as device_offline above.
+			occurredAt := s.SiteCreatedAt
+			if s.WorstLastSeenAt != nil {
+				occurredAt = *s.WorstLastSeenAt
+			}
 			alerts = append(alerts, Alert{
 				Type: "low_coverage", Severity: AlertSeverityWarning,
 				SiteID: s.SiteID, SiteName: s.SiteName,
 				Message:    fmt.Sprintf("Coverage at %.0f%% over the last %dh window", s.CoveragePct, health.CoverageWindowHours),
-				OccurredAt: now,
+				OccurredAt: occurredAt,
 			})
 		}
 	}

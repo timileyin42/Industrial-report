@@ -1,4 +1,6 @@
 mosquitto/config/passwd
+mosquitto/config/dynamic-security.json
+mosquitto/config/dynamic-security.json.pw
 mosquitto/data/
 mosquitto/log/
 *.log

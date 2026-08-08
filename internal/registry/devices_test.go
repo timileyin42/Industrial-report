@@ -17,7 +17,7 @@ func TestRegisterDeviceStoresOnlyHash(t *testing.T) {
 	q := testQueries(t)
 	pool := testRawPool(t)
 	sites := NewSites(q)
-	devices := NewDevices(q, 10*time.Minute, 5*time.Minute)
+	devices := NewDevices(q, 10*time.Minute, 5*time.Minute, nil)
 	ctx := context.Background()
 
 	siteID := uniqueID("site-secret-")
@@ -51,7 +51,7 @@ func TestRotateSecretInvalidatesOldOne(t *testing.T) {
 	q := testQueries(t)
 	pool := testRawPool(t)
 	sites := NewSites(q)
-	devices := NewDevices(q, 10*time.Minute, 5*time.Minute)
+	devices := NewDevices(q, 10*time.Minute, 5*time.Minute, nil)
 	ctx := context.Background()
 
 	siteID := uniqueID("site-rotate-")

@@ -20,6 +20,7 @@ import (
 	"github.com/timileyin42/zgnis-solar/internal/db"
 	"github.com/timileyin42/zgnis-solar/internal/email"
 	"github.com/timileyin42/zgnis-solar/internal/httpapi"
+	"github.com/timileyin42/zgnis-solar/internal/mqttadmin"
 	"github.com/timileyin42/zgnis-solar/internal/registry"
 	"github.com/timileyin42/zgnis-solar/internal/storage"
 )
@@ -41,8 +42,18 @@ func main() {
 
 	queries := db.New(pool)
 
+	// mqttAdmin is nil (not fatal) when MQTT_ADMIN_USERNAME/PASSWORD
+	// aren't set — see internal/mqttadmin's own doc comment. Its
+	// bootstrap step also provisions the ingestor's own broker
+	// credential (from MQTT_USERNAME/MQTT_PASSWORD) if missing, so a
+	// fresh deployment needs zero manual `mosquitto_passwd`/ACL setup.
+	mqttAdmin, err := mqttadmin.NewClientFromEnv(ctx)
+	if err != nil {
+		log.Fatalf("mqtt admin (dynsec) connect: %v", err)
+	}
+
 	sites := registry.NewSites(queries)
-	devices := registry.NewDevices(queries, onlineThreshold, expectedInterval)
+	devices := registry.NewDevices(queries, onlineThreshold, expectedInterval, mqttAdmin)
 	users := registry.NewUsers(queries)
 	fleet := registry.NewFleet(sites, devices, onlineThreshold, expectedInterval, coverageWindow)
 	telemetry := registry.NewTelemetry(queries)

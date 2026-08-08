@@ -9,7 +9,7 @@ import { ExportButton } from "../components/export/ExportButton";
 import { AsyncExportButton } from "../components/export/AsyncExportButton";
 import { getFleetEnergy } from "../api/analytics";
 import { getFleetTrends } from "../api/benchmark";
-import { downloadFleetSummaryCSV } from "../api/exports";
+import { downloadFleetSummaryCSV, downloadFleetSummaryPDF } from "../api/exports";
 import { ApiError } from "../api/types";
 
 // Fleet-wide generation view — split out of the former combined
@@ -34,6 +34,7 @@ export function EnergyPage() {
       <div className="flex-1 p-grid-margin space-y-8">
         <div className="flex flex-wrap justify-end gap-2">
           <ExportButton label="Export Fleet Summary CSV" onExport={downloadFleetSummaryCSV} />
+          <ExportButton label="Export Fleet Summary PDF" onExport={downloadFleetSummaryPDF} />
           <AsyncExportButton label="Queue Fleet Export" input={{ job_type: "fleet_summary_csv" }} />
         </div>
 

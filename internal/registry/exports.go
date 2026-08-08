@@ -81,11 +81,11 @@ type CreateExportJobInput struct {
 // returning immediately with the job's id for the caller to poll.
 func (e *Exports) Create(ctx context.Context, in CreateExportJobInput) (db.ExportJob, error) {
 	switch in.JobType {
-	case db.ExportJobTypeSiteTelemetryCsv, db.ExportJobTypeSiteSummaryCsv:
+	case db.ExportJobTypeSiteTelemetryCsv, db.ExportJobTypeSiteSummaryCsv, db.ExportJobTypeSiteSummaryPdf:
 		if in.SiteID == nil || *in.SiteID == "" {
 			return db.ExportJob{}, errors.New("site_id is required for this job type")
 		}
-	case db.ExportJobTypeFleetSummaryCsv:
+	case db.ExportJobTypeFleetSummaryCsv, db.ExportJobTypeFleetSummaryPdf:
 		if in.SiteID != nil {
 			return db.ExportJob{}, errors.New("site_id must not be set for a fleet-wide job")
 		}
@@ -120,14 +120,14 @@ func (e *Exports) run(jobID int64, jobType db.ExportJobType, siteID *string, par
 		return
 	}
 
-	data, filename, err := e.build(ctx, jobType, siteID, params)
+	data, filename, contentType, err := e.build(ctx, jobType, siteID, params)
 	if err != nil {
 		e.fail(ctx, jobID, err)
 		return
 	}
 
 	key := fmt.Sprintf("exports/%d-%s", jobID, filename)
-	if err := e.storage.Upload(ctx, key, data, "text/csv"); err != nil {
+	if err := e.storage.Upload(ctx, key, data, contentType); err != nil {
 		e.fail(ctx, jobID, err)
 		return
 	}
@@ -144,7 +144,7 @@ func (e *Exports) fail(ctx context.Context, jobID int64, err error) {
 	}
 }
 
-func (e *Exports) build(ctx context.Context, jobType db.ExportJobType, siteID *string, params exportJobParams) ([]byte, string, error) {
+func (e *Exports) build(ctx context.Context, jobType db.ExportJobType, siteID *string, params exportJobParams) ([]byte, string, string, error) {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 
@@ -156,7 +156,7 @@ func (e *Exports) build(ctx context.Context, jobType db.ExportJobType, siteID *s
 		for {
 			rows, next, err := e.telemetry.List(ctx, ListTelemetryInput{SiteID: *siteID, From: &params.From, To: &params.To, CursorToken: cursor, Limit: 500})
 			if err != nil {
-				return nil, "", err
+				return nil, "", "", err
 			}
 			for _, r := range rows {
 				voltage := ""
@@ -175,26 +175,42 @@ func (e *Exports) build(ctx context.Context, jobType db.ExportJobType, siteID *s
 			cursor = next
 		}
 		w.Flush()
-		return buf.Bytes(), fmt.Sprintf("%s-telemetry.csv", *siteID), nil
+		return buf.Bytes(), fmt.Sprintf("%s-telemetry.csv", *siteID), "text/csv", nil
 
 	case db.ExportJobTypeSiteSummaryCsv:
 		series, err := e.analytics.SiteEnergy(ctx, *siteID, params.Period, params.From, params.To)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 		writeEnergySeriesCSV(w, series)
-		return buf.Bytes(), fmt.Sprintf("%s-summary.csv", *siteID), nil
+		return buf.Bytes(), fmt.Sprintf("%s-summary.csv", *siteID), "text/csv", nil
 
 	case db.ExportJobTypeFleetSummaryCsv:
 		series, err := e.analytics.FleetEnergy(ctx, params.CohortID, params.Period, params.From, params.To)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 		writeEnergySeriesCSV(w, series)
-		return buf.Bytes(), "fleet-summary.csv", nil
+		return buf.Bytes(), "fleet-summary.csv", "text/csv", nil
+
+	case db.ExportJobTypeSiteSummaryPdf:
+		series, err := e.analytics.SiteEnergy(ctx, *siteID, params.Period, params.From, params.To)
+		if err != nil {
+			return nil, "", "", err
+		}
+		data := BuildSiteEnergySummaryPDF(*siteID, params.Period, params.From, params.To, series)
+		return data, fmt.Sprintf("%s-summary.pdf", *siteID), "application/pdf", nil
+
+	case db.ExportJobTypeFleetSummaryPdf:
+		series, err := e.analytics.FleetEnergy(ctx, params.CohortID, params.Period, params.From, params.To)
+		if err != nil {
+			return nil, "", "", err
+		}
+		data := BuildFleetEnergySummaryPDF(params.Period, params.From, params.To, series)
+		return data, "fleet-summary.pdf", "application/pdf", nil
 
 	default:
-		return nil, "", fmt.Errorf("unknown job_type %q", jobType)
+		return nil, "", "", fmt.Errorf("unknown job_type %q", jobType)
 	}
 }
 

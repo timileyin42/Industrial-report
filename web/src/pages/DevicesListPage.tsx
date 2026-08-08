@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Plus, Router, FileClock, RefreshCw, Copy, Check, AlertTriangle } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
+import { DeviceQRCode } from "../components/devices/DeviceQRCode";
 import { DataTable, type Column } from "../components/table/DataTable";
 import { StatusBadge } from "../components/status/StatusBadge";
 import { EmptyState } from "../components/feedback/EmptyState";
@@ -122,15 +123,24 @@ export function DevicesListPage() {
         </div>
 
         {rotatedSecret && (
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
           <div className="glass-card rounded-2xl p-6 space-y-4">
             <div className="flex items-start gap-3">
               <AlertTriangle size={20} className="text-secondary mt-0.5" />
               <p className="font-body-base text-on-surface-variant">
                 New secret for <strong className="text-on-surface">{rotatedSecret.device_id}</strong> — shown{" "}
-                <strong className="text-on-surface">exactly once</strong>. Copy it now and sync it into the
-                Mosquitto broker; the old secret no longer works.
+                <strong className="text-on-surface">exactly once</strong>.
+                {rotatedSecret.broker_sync_warning
+                  ? " The old secret may still work on the broker — see the warning below."
+                  : " It's already synced to the MQTT broker; the old secret no longer works there."}
               </p>
             </div>
+            {rotatedSecret.broker_sync_warning && (
+              <div className="flex items-start gap-3 bg-secondary-container/40 border border-secondary rounded-xl p-4">
+                <AlertTriangle size={20} className="text-secondary mt-0.5 flex-shrink-0" />
+                <p className="font-body-base text-[13px] text-on-surface-variant">{rotatedSecret.broker_sync_warning}</p>
+              </div>
+            )}
             <div className="flex gap-2">
               <code className="flex-1 bg-white/70 border border-outline-variant p-3 rounded-xl font-data-mono-sm text-data-mono-sm text-on-surface break-all">
                 {rotatedSecret.secret}
@@ -156,6 +166,8 @@ export function DevicesListPage() {
                 Done
               </button>
             </div>
+          </div>
+          <DeviceQRCode deviceId={rotatedSecret.device_id} secret={rotatedSecret.secret} />
           </div>
         )}
         {rotateError && <p className="font-label-caps text-label-caps text-error">{rotateError}</p>}

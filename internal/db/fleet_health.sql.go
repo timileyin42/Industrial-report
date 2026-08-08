@@ -114,6 +114,7 @@ per_device AS (
 SELECT
     s.site_id,
     s.name AS site_name,
+    s.created_at AS site_created_at,
     count(pd.device_id)::bigint AS total_devices,
     count(pd.device_id) FILTER (
         WHERE pd.revoked_at IS NULL AND pd.last_contact_at > $1::timestamptz
@@ -124,7 +125,7 @@ SELECT
 FROM sites s
 LEFT JOIN per_device pd ON pd.site_id = s.site_id
 WHERE $2::text IS NULL OR s.site_id > $2
-GROUP BY s.site_id, s.name
+GROUP BY s.site_id, s.name, s.created_at
 ORDER BY s.site_id
 LIMIT $3
 `
@@ -141,6 +142,7 @@ type ListSiteHealthParams struct {
 type ListSiteHealthRow struct {
 	SiteID           string
 	SiteName         pgtype.Text
+	SiteCreatedAt    pgtype.Timestamptz
 	TotalDevices     int64
 	OnlineDevices    int64
 	ActualReadings   int64
@@ -170,6 +172,7 @@ func (q *Queries) ListSiteHealth(ctx context.Context, arg ListSiteHealthParams) 
 		if err := rows.Scan(
 			&i.SiteID,
 			&i.SiteName,
+			&i.SiteCreatedAt,
 			&i.TotalDevices,
 			&i.OnlineDevices,
 			&i.ActualReadings,

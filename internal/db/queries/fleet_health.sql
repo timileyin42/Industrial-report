@@ -70,6 +70,7 @@ per_device AS (
 SELECT
     s.site_id,
     s.name AS site_name,
+    s.created_at AS site_created_at,
     count(pd.device_id)::bigint AS total_devices,
     count(pd.device_id) FILTER (
         WHERE pd.revoked_at IS NULL AND pd.last_contact_at > sqlc.arg('online_cutoff')::timestamptz
@@ -80,6 +81,6 @@ SELECT
 FROM sites s
 LEFT JOIN per_device pd ON pd.site_id = s.site_id
 WHERE sqlc.narg('cursor_site_id')::text IS NULL OR s.site_id > sqlc.narg('cursor_site_id')
-GROUP BY s.site_id, s.name
+GROUP BY s.site_id, s.name, s.created_at
 ORDER BY s.site_id
 LIMIT sqlc.arg('page_limit');

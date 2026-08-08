@@ -5,10 +5,16 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: zgnis
-      POSTGRES_PASSWORD: zgnis_dev_only
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zgnis_dev_only}
       POSTGRES_DB: zgnis_solar
-    ports:
-      - "5432:5432"
+    # No host port publish by default — nothing outside the Docker network
+    # needs to reach Postgres directly (api/ingestor use the `timescaledb`
+    # service name over the internal network), and publishing 5432
+    # unconditionally breaks any host that already runs its own Postgres
+    # on that port. Uncomment for local dev if you want `psql` from the
+    # host; leave it off in any shared/production environment.
+    # ports:
+    #   - "5432:5432"
     volumes:
       - timescale_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,6 +27,13 @@ services:
     image: eclipse-mosquitto:2
     container_name: zgnis-mosquitto
     restart: unless-stopped
+    # MOSQUITTO_DYNSEC_PASSWORD sets the dynamic-security plugin's
+    # initial admin password on its very first start (see
+    # mosquitto.conf) — only read once, when dynamic-security.json
+    # doesn't exist yet. Must match MQTT_ADMIN_PASSWORD below, since
+    # that's the credential the API connects to the broker with as
+    # that same admin.
+    env_file: .env
     ports:
       - "1883:1883"   # plaintext, LAN/dev only — do not expose publicly
       - "8883:8883"   # TLS listener, disabled until Phase 1 (see mosquitto.conf)
@@ -28,6 +41,11 @@ services:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "1883"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # One-shot: applies migrations/*.sql via goose, then exits. Re-run with
   # `docker compose run --rm migrate` after adding a new migration —
@@ -54,6 +72,8 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+      mosquitto:
+        condition: service_healthy
 
   ingestor:
     build:
@@ -62,10 +82,17 @@ services:
     container_name: zgnis-ingestor
     restart: unless-stopped
     env_file: .env
+    # Waits on api too, not just mosquitto — api's startup bootstrap
+    # (internal/mqttadmin) is what actually creates the ingestor's own
+    # broker credential and role. No healthcheck on api to wait on
+    # properly, but paho's SetAutoReconnect(true) already covers the
+    # short race window on a cold start.
     depends_on:
       timescaledb:
         condition: service_healthy
       mosquitto:
+        condition: service_healthy
+      api:
         condition: service_started
 
   # Not started by `docker compose up` (no `depends_on` targets it) —
@@ -85,6 +112,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
         VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+        VITE_MQTT_PUBLIC_BROKER_URL: ${VITE_MQTT_PUBLIC_BROKER_URL:-}
     container_name: zgnis-web
     restart: unless-stopped
     ports:

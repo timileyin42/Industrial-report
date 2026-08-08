@@ -48,6 +48,10 @@ export type Device = z.infer<typeof DeviceSchema>;
 
 export const DeviceWithSecretSchema = DeviceSchema.extend({
   secret: z.string(),
+  // Set when the secret above was NOT successfully synced into the MQTT
+  // broker's credential store (internal/mqttadmin) — the device record
+  // is real, but it can't authenticate yet.
+  broker_sync_warning: z.string().nullable().optional(),
 });
 export type DeviceWithSecret = z.infer<typeof DeviceWithSecretSchema>;
 
@@ -300,7 +304,7 @@ export type IngestionAuditEntry = z.infer<typeof IngestionAuditEntrySchema>;
 
 export const ExportJobSchema = z.object({
   id: z.number(),
-  job_type: z.enum(["site_telemetry_csv", "site_summary_csv", "fleet_summary_csv"]),
+  job_type: z.enum(["site_telemetry_csv", "site_summary_csv", "fleet_summary_csv", "site_summary_pdf", "fleet_summary_pdf"]),
   site_id: z.string().nullable().optional(),
   status: z.enum(["pending", "running", "completed", "failed"]),
   error: z.string().nullable().optional(),

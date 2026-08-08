@@ -99,6 +99,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/sites/:site_id/analytics/anomalies", h.siteAnomalies, siteAccess)
 	authed.GET("/sites/:site_id/export/telemetry.csv", h.siteTelemetryCSV, siteAccess)
 	authed.GET("/sites/:site_id/export/summary.csv", h.siteSummaryCSV, siteAccess)
+	authed.GET("/sites/:site_id/export/summary.pdf", h.siteSummaryPDF, siteAccess)
 
 	// Phase 3 — analytics/KPIs (fleet-wide, operator-only: cross-site
 	// comparisons leak fleet-wide distribution by construction)
@@ -115,6 +116,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/fleet/analytics/cohorts/:cohort_id", h.fleetCohort, operatorOnly)
 	authed.GET("/fleet/analytics/anomalies", h.fleetAnomalies, operatorOnly)
 	authed.GET("/fleet/export/summary.csv", h.fleetSummaryCSV, operatorOnly)
+	authed.GET("/fleet/export/summary.pdf", h.fleetSummaryPDF, operatorOnly)
 
 	// Slice 3 — async export jobs, the counterpart to the sync CSV
 	// endpoints above. Access rules are enforced inside the handler
@@ -137,6 +139,11 @@ func NewRouter(deps Deps) *echo.Echo {
 	// scoping for restricted users happens inside the handler, same
 	// siteFilter pattern as listSites/listDevices.
 	authed.GET("/audit/ingestion", h.listIngestionAudit)
+
+	// Tamper-evidence verification (migration 0013) — operator-only, same
+	// as browsing the underlying logs.
+	authed.GET("/audit/actions/verify", h.verifyAuditActions, operatorOnly)
+	authed.GET("/audit/ingestion/verify", h.verifyIngestionAudit, operatorOnly)
 
 	return e
 }

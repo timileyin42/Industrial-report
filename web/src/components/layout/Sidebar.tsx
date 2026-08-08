@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, NavLink } from "react-router-dom";
+import type { ComponentType } from "react";
 import {
   Grid2x2,
   MapPin,
@@ -17,10 +18,13 @@ import {
   ScrollText,
   FileClock,
   Settings,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { LogoMark } from "../brand/Logo";
 import { getIngestionStatus } from "../../api/fleet";
+import { useSidebar } from "./SidebarContext";
 
 // Freshness threshold for "operational" — deliberately the same
 // ONLINE_THRESHOLD_MINUTES concept the rest of the platform uses for a
@@ -29,7 +33,7 @@ import { getIngestionStatus } from "../../api/fleet";
 // there's no real data source for one.
 const STALE_MINUTES = 15;
 
-function IngestionStatusWidget() {
+function IngestionStatusWidget({ collapsed }: { collapsed: boolean }) {
   const { data } = useQuery({
     queryKey: ["ingestion-status"],
     queryFn: () => getIngestionStatus(),
@@ -41,6 +45,14 @@ function IngestionStatusWidget() {
   const lastReceivedAt = data.lastReceivedAt ? new Date(data.lastReceivedAt) : null;
   const minutesAgo = lastReceivedAt ? (Date.now() - lastReceivedAt.getTime()) / 60_000 : null;
   const operational = minutesAgo !== null && minutesAgo < STALE_MINUTES;
+
+  if (collapsed) {
+    return (
+      <div className="mx-auto mb-3" title={operational ? "All Systems Operational" : "No recent data"}>
+        <span className={`block w-2.5 h-2.5 rounded-full ${operational ? "bg-success" : "bg-error"}`} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-3 mb-3 glass-card rounded-xl p-3">
@@ -63,14 +75,38 @@ function IngestionStatusWidget() {
 }
 
 // Pill-highlighted nav items per the light/glass redesign — no more
-// left/right border accent, a soft rounded background instead.
-const navItemClass = ({ isActive }: { isActive: boolean }) =>
-  [
-    "flex items-center gap-3 px-4 py-2 rounded-full transition-colors font-body-base text-body-base text-[14px]",
-    isActive
-      ? "text-on-primary-container font-semibold bg-primary-container"
-      : "text-on-surface-variant hover:bg-surface-dim hover:text-on-surface",
-  ].join(" ");
+// left/right border accent, a soft rounded background instead. Centered,
+// icon-only (no gap needed) when the sidebar is collapsed.
+const navItemClass = (collapsed: boolean) =>
+  ({ isActive }: { isActive: boolean }) =>
+    [
+      "flex items-center rounded-full transition-colors font-body-base text-body-base text-[14px]",
+      collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-4 py-2",
+      isActive
+        ? "text-on-primary-container font-semibold bg-primary-container"
+        : "text-on-surface-variant hover:bg-surface-dim hover:text-on-surface",
+    ].join(" ");
+
+function NavItem({
+  to,
+  icon: Icon,
+  label,
+  collapsed,
+  end,
+}: {
+  to: string;
+  icon: ComponentType<{ size?: number }>;
+  label: string;
+  collapsed: boolean;
+  end?: boolean;
+}) {
+  return (
+    <NavLink to={to} end={end} className={navItemClass(collapsed)} title={collapsed ? label : undefined}>
+      <Icon size={18} />
+      {!collapsed && <span>{label}</span>}
+    </NavLink>
+  );
+}
 
 const sectionLabelClass = "px-4 pt-5 pb-1.5 font-label-caps text-label-caps text-on-surface-variant/70 uppercase tracking-widest";
 
@@ -82,113 +118,82 @@ const sectionLabelClass = "px-4 pt-5 pb-1.5 font-label-caps text-label-caps text
 // here). Everything below operator-only stays operator-only; nothing
 // here loosens the existing role checks in routes.tsx/router.go.
 //
+// Collapsible to an icon-only rail (see SidebarContext) — AppLayout
+// reads the same collapsed state to shrink the main content's left
+// margin to match, so the two never drift out of sync.
+//
 // Responsive per DESIGN.md's documented breakpoint (mobile < 768px: "side
 // nav collapses to a bottom bar"). Below md, this component renders
 // nothing; MobileNav (same file) renders the bottom bar instead, used
 // together in AppLayout.
 export function Sidebar() {
   const { session, logout } = useAuth();
+  const { collapsed, toggle } = useSidebar();
   const isOperator = session?.role === "operator";
 
   return (
-    <aside className="hidden md:flex fixed left-4 top-4 bottom-4 w-[240px] glass-card rounded-2xl flex-col py-grid-margin z-50">
-      <Link to="/" className="px-6 mb-6 flex items-start gap-2 hover:opacity-90 transition-opacity" aria-label="Back to home">
-        <LogoMark size={20} />
-        <h1 className="font-headline-md text-headline-md font-bold text-on-surface leading-tight">
-          Clean Energy Analytics
-        </h1>
-      </Link>
-      <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-        <p className={sectionLabelClass}>Main</p>
-        {isOperator && (
-          <NavLink to="/app" className={navItemClass} end>
-            <Grid2x2 size={18} />
-            <span>Dashboard</span>
-          </NavLink>
-        )}
-        <NavLink to="/app/sites" className={navItemClass}>
-          <MapPin size={18} />
-          <span>Sites</span>
-        </NavLink>
-        <NavLink to="/app/devices" className={navItemClass}>
-          <Radio size={18} />
-          <span>Devices</span>
-        </NavLink>
-        {isOperator && (
-          <NavLink to="/app/map" className={navItemClass}>
-            <Map size={18} />
-            <span>Map View</span>
-          </NavLink>
-        )}
-        {isOperator && (
-          <NavLink to="/app/alerts" className={navItemClass}>
-            <Bell size={18} />
-            <span>Alerts</span>
-          </NavLink>
-        )}
+    <aside
+      className={`hidden md:flex fixed left-4 top-4 bottom-4 glass-card rounded-2xl flex-col py-grid-margin z-50 transition-[width] duration-200 ${
+        collapsed ? "w-[72px]" : "w-[240px]"
+      }`}
+    >
+      <div className={`flex items-center mb-6 ${collapsed ? "flex-col gap-3 px-0" : "justify-between px-6"}`}>
+        <Link to="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity" aria-label="Back to home">
+          <LogoMark size={20} />
+          {!collapsed && (
+            <h1 className="font-headline-md text-headline-md font-bold text-on-surface leading-tight">
+              Clean Energy Analytics
+            </h1>
+          )}
+        </Link>
+        <button
+          onClick={toggle}
+          className="text-on-surface-variant hover:text-primary transition-colors flex-shrink-0"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
+      </div>
+      <nav className={`flex-1 space-y-0.5 overflow-y-auto ${collapsed ? "px-2" : "px-3"}`}>
+        {!collapsed && <p className={sectionLabelClass}>Main</p>}
+        {isOperator && <NavItem to="/app" icon={Grid2x2} label="Dashboard" collapsed={collapsed} end />}
+        <NavItem to="/app/sites" icon={MapPin} label="Sites" collapsed={collapsed} />
+        <NavItem to="/app/devices" icon={Radio} label="Devices" collapsed={collapsed} />
+        {isOperator && <NavItem to="/app/map" icon={Map} label="Map View" collapsed={collapsed} />}
+        {isOperator && <NavItem to="/app/alerts" icon={Bell} label="Alerts" collapsed={collapsed} />}
 
         {isOperator && (
           <>
-            <p className={sectionLabelClass}>Analytics</p>
-            <NavLink to="/app/analytics/performance" className={navItemClass}>
-              <Gauge size={18} />
-              <span>Performance</span>
-            </NavLink>
-            <NavLink to="/app/analytics/energy" className={navItemClass}>
-              <Zap size={18} />
-              <span>Energy</span>
-            </NavLink>
-            <NavLink to="/app/analytics/emissions" className={navItemClass}>
-              <Leaf size={18} />
-              <span>Emissions</span>
-            </NavLink>
-            <NavLink to="/app/reports" className={navItemClass}>
-              <FileBarChart size={18} />
-              <span>Reports</span>
-            </NavLink>
+            {!collapsed && <p className={sectionLabelClass}>Analytics</p>}
+            <NavItem to="/app/analytics/performance" icon={Gauge} label="Performance" collapsed={collapsed} />
+            <NavItem to="/app/analytics/energy" icon={Zap} label="Energy" collapsed={collapsed} />
+            <NavItem to="/app/analytics/emissions" icon={Leaf} label="Emissions" collapsed={collapsed} />
+            <NavItem to="/app/reports" icon={FileBarChart} label="Reports" collapsed={collapsed} />
 
-            <p className={sectionLabelClass}>Management</p>
-            <NavLink to="/app/cohorts" className={navItemClass}>
-              <Layers size={18} />
-              <span>Cohorts / Projects</span>
-            </NavLink>
-            <NavLink to="/app/users" className={navItemClass}>
-              <Users size={18} />
-              <span>Users &amp; Roles</span>
-            </NavLink>
-            <NavLink to="/app/devices/new" className={navItemClass}>
-              <Radio size={18} />
-              <span>Device Registry</span>
-            </NavLink>
+            {!collapsed && <p className={sectionLabelClass}>Management</p>}
+            <NavItem to="/app/cohorts" icon={Layers} label="Cohorts / Projects" collapsed={collapsed} />
+            <NavItem to="/app/users" icon={Users} label="Users & Roles" collapsed={collapsed} />
+            <NavItem to="/app/devices/new" icon={Radio} label="Device Registry" collapsed={collapsed} />
 
-            <p className={sectionLabelClass}>System</p>
-            <NavLink to="/app/fleet-health" className={navItemClass}>
-              <HeartPulse size={18} />
-              <span>Fleet Health</span>
-            </NavLink>
-            <NavLink to="/app/settings" className={navItemClass}>
-              <Settings size={18} />
-              <span>Settings</span>
-            </NavLink>
-            <NavLink to="/app/audit" className={navItemClass}>
-              <ScrollText size={18} />
-              <span>Audit Log</span>
-            </NavLink>
+            {!collapsed && <p className={sectionLabelClass}>System</p>}
+            <NavItem to="/app/fleet-health" icon={HeartPulse} label="Fleet Health" collapsed={collapsed} />
+            <NavItem to="/app/settings" icon={Settings} label="Settings" collapsed={collapsed} />
+            <NavItem to="/app/audit" icon={ScrollText} label="Audit Log" collapsed={collapsed} />
           </>
         )}
-        <NavLink to="/app/ingestion-log" className={navItemClass}>
-          <FileClock size={18} />
-          <span>Ingestion Log</span>
-        </NavLink>
+        <NavItem to="/app/ingestion-log" icon={FileClock} label="Ingestion Log" collapsed={collapsed} />
       </nav>
-      {isOperator && <IngestionStatusWidget />}
-      <div className="px-3 pt-4 border-t border-outline-variant">
+      {isOperator && <IngestionStatusWidget collapsed={collapsed} />}
+      <div className={`pt-4 border-t border-outline-variant ${collapsed ? "px-2" : "px-3"}`}>
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:bg-surface-dim hover:text-on-surface transition-colors rounded-full font-body-base"
+          title={collapsed ? "Logout" : undefined}
+          className={`w-full flex items-center text-on-surface-variant hover:bg-surface-dim hover:text-on-surface transition-colors rounded-full font-body-base ${
+            collapsed ? "justify-center py-2.5" : "gap-3 px-4 py-2.5"
+          }`}
         >
           <LogOut size={20} />
-          <span>Logout</span>
+          {!collapsed && <span>Logout</span>}
         </button>
       </div>
     </aside>

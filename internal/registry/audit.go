@@ -134,3 +134,15 @@ func (a *AuditLog) List(ctx context.Context, in ListAuditInput) ([]AuditEntry, s
 	}
 	return entries, next, nil
 }
+
+// VerifyChain re-derives the hash chain migrations/0013 wrote at insert
+// time and reports whether it still matches — see
+// VerifyUserActionAuditChain's own doc comment for why the recompute
+// happens in SQL rather than Go.
+func (a *AuditLog) VerifyChain(ctx context.Context) (ChainVerifyResult, error) {
+	row, err := a.q.VerifyUserActionAuditChain(ctx)
+	if err != nil {
+		return ChainVerifyResult{}, err
+	}
+	return toChainVerifyResult(row.MismatchCount, row.FirstBadID), nil
+}

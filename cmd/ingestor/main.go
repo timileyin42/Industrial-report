@@ -59,12 +59,38 @@ func main() {
 	}
 	defer pool.Close()
 
+	handler := func(_ mqtt.Client, msg mqtt.Message) {
+		if err := handleMessage(ctx, pool, msg.Topic(), msg.Payload()); err != nil {
+			log.Printf("handle message from %s: %v", msg.Topic(), err)
+		}
+	}
+
+	// devices/{device_id}/telemetry — one topic per device. Subscribing
+	// from OnConnectHandler (not just once after the initial Connect) is
+	// deliberate: paho's default CleanSession=true means every reconnect
+	// — a broker restart, a network blip, anything SetAutoReconnect
+	// recovers from — starts a session with NO remembered subscriptions.
+	// Without this, the ingestor would silently stop receiving ANY
+	// telemetry after the first reconnect, recoverable only by manually
+	// restarting the process — found the hard way when a broker restart
+	// (migrating to the dynamic-security plugin) left a running ingestor
+	// connected but deaf.
 	opts := mqtt.NewClientOptions().
 		AddBroker(brokerURL).
 		SetClientID("zgnis-ingestor").
 		SetUsername(mqttUser).
 		SetPassword(mqttPass).
-		SetAutoReconnect(true)
+		SetAutoReconnect(true).
+		SetOnConnectHandler(func(c mqtt.Client) {
+			if token := c.Subscribe("devices/+/telemetry", 1, handler); token.Wait() && token.Error() != nil {
+				log.Printf("subscribe (on connect): %v", token.Error())
+			} else {
+				log.Println("subscribed to devices/+/telemetry")
+			}
+		}).
+		SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+			log.Printf("mqtt connection lost: %v — will auto-reconnect and re-subscribe", err)
+		})
 
 	// Phase 4: optional TLS. Only takes effect when MQTT_TLS_CA_CERT is set
 	// (paired with an ssl:// broker URL) — unset behavior is unchanged from
@@ -83,18 +109,7 @@ func main() {
 	}
 	defer client.Disconnect(250)
 
-	handler := func(_ mqtt.Client, msg mqtt.Message) {
-		if err := handleMessage(ctx, pool, msg.Topic(), msg.Payload()); err != nil {
-			log.Printf("handle message from %s: %v", msg.Topic(), err)
-		}
-	}
-
-	// devices/{device_id}/telemetry — one topic per device (AGENTS.md item 1)
-	if token := client.Subscribe("devices/+/telemetry", 1, handler); token.Wait() && token.Error() != nil {
-		log.Fatalf("subscribe: %v", token.Error())
-	}
-
-	log.Println("ingestor running, subscribed to devices/+/telemetry")
+	log.Println("ingestor running")
 	<-ctx.Done()
 	log.Println("shutting down")
 }

@@ -18,6 +18,7 @@ export interface AnalyticsRange {
   period?: Period;
   from?: string;
   to?: string;
+  [key: string]: string | number | undefined;
 }
 
 export async function getSiteEnergy(siteId: string, range: AnalyticsRange = {}): Promise<EnergySeries> {

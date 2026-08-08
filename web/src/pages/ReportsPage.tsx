@@ -11,6 +11,8 @@ const JOB_TYPE_LABELS: Record<ExportJob["job_type"], string> = {
   site_telemetry_csv: "Site Telemetry CSV",
   site_summary_csv: "Site Summary CSV",
   fleet_summary_csv: "Fleet Summary CSV",
+  site_summary_pdf: "Site Summary PDF",
+  fleet_summary_pdf: "Fleet Summary PDF",
 };
 
 const STATUS_STYLES: Record<ExportJob["status"], string> = {

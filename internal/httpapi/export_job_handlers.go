@@ -50,19 +50,19 @@ func (h *handlers) createExportJob(c echo.Context) error {
 
 	jobType := db.ExportJobType(req.JobType)
 	switch jobType {
-	case db.ExportJobTypeSiteTelemetryCsv, db.ExportJobTypeSiteSummaryCsv:
+	case db.ExportJobTypeSiteTelemetryCsv, db.ExportJobTypeSiteSummaryCsv, db.ExportJobTypeSiteSummaryPdf:
 		if req.SiteID == nil || *req.SiteID == "" {
 			return echo.NewHTTPError(http.StatusBadRequest, "site_id is required for this job type")
 		}
 		if claims.Role == domain.RoleRestricted && (claims.SiteID == nil || *claims.SiteID != *req.SiteID) {
 			return echo.NewHTTPError(http.StatusForbidden, "not authorized for this site")
 		}
-	case db.ExportJobTypeFleetSummaryCsv:
+	case db.ExportJobTypeFleetSummaryCsv, db.ExportJobTypeFleetSummaryPdf:
 		if claims.Role != domain.RoleOperator {
 			return echo.NewHTTPError(http.StatusForbidden, "fleet-wide exports are operator-only")
 		}
 	default:
-		return echo.NewHTTPError(http.StatusBadRequest, "job_type must be site_telemetry_csv, site_summary_csv, or fleet_summary_csv")
+		return echo.NewHTTPError(http.StatusBadRequest, "job_type must be site_telemetry_csv, site_summary_csv, fleet_summary_csv, site_summary_pdf, or fleet_summary_pdf")
 	}
 
 	period, err := parsePeriod(c)
