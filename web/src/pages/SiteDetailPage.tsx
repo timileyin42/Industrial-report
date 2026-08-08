@@ -10,6 +10,7 @@ import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
 import { ExportButton } from "../components/export/ExportButton";
 import { AsyncExportButton } from "../components/export/AsyncExportButton";
+import { ExportMenuButton } from "../components/export/ExportMenuButton";
 import { MapEmbed } from "../components/map/MapEmbed";
 import { useAuth } from "../auth/AuthContext";
 import { getSite, updateSiteCountry, setSitePrimary } from "../api/sites";
@@ -194,8 +195,13 @@ export function SiteDetailPage() {
 
         <div className="flex flex-wrap justify-end gap-2">
           <ExportButton label="Export Telemetry CSV" onExport={() => downloadSiteTelemetryCSV(site.site_id)} />
-          <ExportButton label="Export Summary CSV" onExport={() => downloadSiteSummaryCSV(site.site_id)} />
-          <ExportButton label="Export Summary PDF" onExport={() => downloadSiteSummaryPDF(site.site_id)} />
+          <ExportMenuButton
+            label="Export Summary"
+            options={[
+              { label: "CSV", onExport: () => downloadSiteSummaryCSV(site.site_id) },
+              { label: "PDF", onExport: () => downloadSiteSummaryPDF(site.site_id) },
+            ]}
+          />
           {/* Async alternative for ranges too large for a synchronous
               request to finish comfortably — same data, queued instead. */}
           <AsyncExportButton label="Queue Telemetry Export" input={{ job_type: "site_telemetry_csv", site_id: site.site_id }} />

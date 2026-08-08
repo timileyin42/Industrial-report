@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { HomeIcon, Zap, Leaf, TrendingUp, Activity, Bell, Download, AlertTriangle, PowerOff, ShieldOff, Info, CalendarDays } from "lucide-react";
+import { HomeIcon, Zap, Leaf, TrendingUp, Activity, Bell, AlertTriangle, PowerOff, ShieldOff, Info, CalendarDays } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { CircularProgress } from "../components/kpi/CircularProgress";
+import { StatusDonut } from "../components/kpi/StatusDonut";
 import { WeatherWidget } from "../components/dashboard/WeatherWidget";
 import { EnvironmentalImpactPanel } from "../components/dashboard/EnvironmentalImpactPanel";
 import { EnergyFlowIllustration } from "../components/dashboard/EnergyFlowIllustration";
@@ -24,6 +25,7 @@ import { getPrimarySite, listSites } from "../api/sites";
 import { listAllDevices } from "../api/devices";
 import { listFleetAlerts } from "../api/alerts";
 import { downloadFleetSummaryCSV, downloadFleetSummaryPDF } from "../api/exports";
+import { ExportMenuButton } from "../components/export/ExportMenuButton";
 import { ApiError } from "../api/types";
 
 // Light/glass redesign — replaces the earlier dark-industrial Fleet
@@ -211,20 +213,13 @@ export function FleetDashboardPage() {
               className="bg-transparent text-[13px] text-on-surface outline-none font-data-mono-sm"
             />
           </label>
-          <button
-            onClick={downloadFleetSummaryCSV}
-            className="flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-semibold px-4 py-2.5 rounded-full transition-all shadow-soft flex-shrink-0"
-          >
-            <Download size={16} />
-            <span>Export Report (CSV)</span>
-          </button>
-          <button
-            onClick={downloadFleetSummaryPDF}
-            className="flex items-center gap-2 glass-card hover:text-primary text-on-surface font-semibold px-4 py-2.5 rounded-full transition-all flex-shrink-0"
-          >
-            <Download size={16} />
-            <span>Export Report (PDF)</span>
-          </button>
+          <ExportMenuButton
+            label="Export Report"
+            options={[
+              { label: "CSV", onExport: downloadFleetSummaryCSV },
+              { label: "PDF", onExport: downloadFleetSummaryPDF },
+            ]}
+          />
         </div>
       </div>
 
@@ -312,13 +307,17 @@ export function FleetDashboardPage() {
               ) : (
                 <>
                   <div className="flex items-center justify-center mt-4">
-                    <CircularProgress
-                      percent={classifiedTotal > 0 ? (onlineCount / classifiedTotal) * 100 : 0}
+                    <StatusDonut
+                      segments={[
+                        { value: onlineCount, className: "stroke-success" },
+                        { value: offlineCount, className: "stroke-error" },
+                        { value: faultCount, className: "stroke-secondary" },
+                        { value: noDataCount, className: "stroke-outline" },
+                      ]}
                       size={120}
                       strokeWidth={12}
-                      color="#1a9c6b"
-                      value={String(classifiedTotal)}
-                      label="Devices"
+                      centerValue={String(classifiedTotal)}
+                      centerLabel="Devices"
                     />
                   </div>
                   <div className="mt-4 space-y-1.5 text-[12px]">

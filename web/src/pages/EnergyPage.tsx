@@ -5,8 +5,8 @@ import { LineChart } from "../components/charts/LineChart";
 import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
-import { ExportButton } from "../components/export/ExportButton";
 import { AsyncExportButton } from "../components/export/AsyncExportButton";
+import { ExportMenuButton } from "../components/export/ExportMenuButton";
 import { getFleetEnergy } from "../api/analytics";
 import { getFleetTrends } from "../api/benchmark";
 import { downloadFleetSummaryCSV, downloadFleetSummaryPDF } from "../api/exports";
@@ -33,8 +33,13 @@ export function EnergyPage() {
       <TopNav title="Energy" />
       <div className="flex-1 p-grid-margin space-y-8">
         <div className="flex flex-wrap justify-end gap-2">
-          <ExportButton label="Export Fleet Summary CSV" onExport={downloadFleetSummaryCSV} />
-          <ExportButton label="Export Fleet Summary PDF" onExport={downloadFleetSummaryPDF} />
+          <ExportMenuButton
+            label="Export Fleet Summary"
+            options={[
+              { label: "CSV", onExport: downloadFleetSummaryCSV },
+              { label: "PDF", onExport: downloadFleetSummaryPDF },
+            ]}
+          />
           <AsyncExportButton label="Queue Fleet Export" input={{ job_type: "fleet_summary_csv" }} />
         </div>
 

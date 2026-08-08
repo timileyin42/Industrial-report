@@ -10,6 +10,7 @@ import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
 import { ExportButton } from "../components/export/ExportButton";
 import { AsyncExportButton } from "../components/export/AsyncExportButton";
+import { ExportMenuButton } from "../components/export/ExportMenuButton";
 import { getSiteEnergy, getSiteSpecificYield, getSitePeak, getSiteCapacityFactor, getSitePerformanceRatio } from "../api/analytics";
 import { getSiteEmissions } from "../api/emissions";
 import { getCompareHistory, getCompareFleet } from "../api/benchmark";
@@ -120,8 +121,13 @@ export function SiteAnalyticsPage() {
       <div className="flex-1 p-grid-margin space-y-8">
         <div className="flex flex-wrap justify-end gap-2">
           <ExportButton label="Export Telemetry CSV" onExport={() => downloadSiteTelemetryCSV(siteId!)} />
-          <ExportButton label="Export Summary CSV" onExport={() => downloadSiteSummaryCSV(siteId!)} />
-          <ExportButton label="Export Summary PDF" onExport={() => downloadSiteSummaryPDF(siteId!)} />
+          <ExportMenuButton
+            label="Export Summary"
+            options={[
+              { label: "CSV", onExport: () => downloadSiteSummaryCSV(siteId!) },
+              { label: "PDF", onExport: () => downloadSiteSummaryPDF(siteId!) },
+            ]}
+          />
           <AsyncExportButton label="Queue Telemetry Export" input={{ job_type: "site_telemetry_csv", site_id: siteId! }} />
         </div>
 
