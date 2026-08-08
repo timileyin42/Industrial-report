@@ -24,6 +24,22 @@ func NewIngestionAudit(q *db.Queries) *IngestionAudit {
 	return &IngestionAudit{q: q}
 }
 
+// LastReceivedAt is the ingestion-pipeline health signal the Dashboard's
+// status widget uses — "how long ago did the ingestor last see anything
+// at all" (valid or not), never a synthetic uptime percentage this
+// platform has no real data source for. nil means the fleet has never
+// received a single message.
+func (a *IngestionAudit) LastReceivedAt(ctx context.Context) (*time.Time, error) {
+	ts, err := a.q.LastIngestionReceivedAt(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ts.Valid {
+		return nil, nil
+	}
+	return &ts.Time, nil
+}
+
 type IngestionAuditEntry struct {
 	ID         int64
 	DeviceID   string

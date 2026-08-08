@@ -105,3 +105,76 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 	)
 	return i, err
 }
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, email, password_hash, role, site_id, created_at, disabled_at FROM users
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < ($1::timestamptz, $2::bigint)
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListUsersParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.Int8
+	PageLimit       int32
+}
+
+// Keyset pagination, same convention as ListSites/ListDevices.
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers, arg.CursorCreatedAt, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.PasswordHash,
+			&i.Role,
+			&i.SiteID,
+			&i.CreatedAt,
+			&i.DisabledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserDisabled = `-- name: SetUserDisabled :one
+UPDATE users SET disabled_at = $2 WHERE id = $1
+RETURNING id, email, password_hash, role, site_id, created_at, disabled_at
+`
+
+type SetUserDisabledParams struct {
+	ID         int64
+	DisabledAt pgtype.Timestamptz
+}
+
+// disabled_at itself, not a boolean flag — NULL means active, a real
+// timestamp means disabled since that moment (audit-friendly, matches
+// devices.revoked_at's existing convention in this codebase).
+func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserDisabled, arg.ID, arg.DisabledAt)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Role,
+		&i.SiteID,
+		&i.CreatedAt,
+		&i.DisabledAt,
+	)
+	return i, err
+}

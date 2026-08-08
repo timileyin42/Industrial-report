@@ -14,7 +14,7 @@ import (
 const createSite = `-- name: CreateSite :one
 INSERT INTO sites (site_id, name, address, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, cohort_id, country)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at
+RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, is_primary, created_at
 `
 
 type CreateSiteParams struct {
@@ -58,9 +58,26 @@ func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, e
 		&i.InstallDate,
 		&i.Timezone,
 		&i.Country,
+		&i.IsPrimary,
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const fleetCapacityForCohort = `-- name: FleetCapacityForCohort :one
+SELECT coalesce(sum(system_size_kw), 0)::numeric AS total_capacity_kw
+FROM sites
+WHERE $1::text IS NULL OR cohort_id = $1
+`
+
+// Same optional-cohort-filter pattern as ListFleetDailyRollup — used by
+// Analytics.FleetSpecificYield to normalize fleet-wide energy against
+// fleet-wide (or cohort-wide) capacity, not one site's.
+func (q *Queries) FleetCapacityForCohort(ctx context.Context, cohortID pgtype.Text) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, fleetCapacityForCohort, cohortID)
+	var total_capacity_kw pgtype.Numeric
+	err := row.Scan(&total_capacity_kw)
+	return total_capacity_kw, err
 }
 
 const fleetTotals = `-- name: FleetTotals :one
@@ -82,8 +99,33 @@ func (q *Queries) FleetTotals(ctx context.Context) (FleetTotalsRow, error) {
 	return i, err
 }
 
+const getPrimarySite = `-- name: GetPrimarySite :one
+SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, is_primary, created_at FROM sites WHERE is_primary = true
+`
+
+func (q *Queries) GetPrimarySite(ctx context.Context) (Site, error) {
+	row := q.db.QueryRow(ctx, getPrimarySite)
+	var i Site
+	err := row.Scan(
+		&i.SiteID,
+		&i.CohortID,
+		&i.Address,
+		&i.Name,
+		&i.GpsLat,
+		&i.GpsLng,
+		&i.InverterMakeModel,
+		&i.SystemSizeKw,
+		&i.InstallDate,
+		&i.Timezone,
+		&i.Country,
+		&i.IsPrimary,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getSite = `-- name: GetSite :one
-SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at FROM sites WHERE site_id = $1
+SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, is_primary, created_at FROM sites WHERE site_id = $1
 `
 
 func (q *Queries) GetSite(ctx context.Context, siteID string) (Site, error) {
@@ -101,9 +143,49 @@ func (q *Queries) GetSite(ctx context.Context, siteID string) (Site, error) {
 		&i.InstallDate,
 		&i.Timezone,
 		&i.Country,
+		&i.IsPrimary,
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listCohorts = `-- name: ListCohorts :many
+SELECT cohort_id, count(*)::bigint AS site_count, coalesce(sum(system_size_kw), 0)::numeric AS total_capacity_kw
+FROM sites
+WHERE cohort_id IS NOT NULL
+GROUP BY cohort_id
+ORDER BY cohort_id
+`
+
+type ListCohortsRow struct {
+	CohortID        pgtype.Text
+	SiteCount       int64
+	TotalCapacityKw pgtype.Numeric
+}
+
+// Distinct cohorts currently in use, with aggregated site count/capacity
+// — cohort_id is a free-text grouping field on sites (no dedicated
+// cohorts table), so this is the closest thing to a "list cohorts"
+// query: derived from what's actually assigned, not a separate managed
+// entity a cohort can exist without ever having a site in it.
+func (q *Queries) ListCohorts(ctx context.Context) ([]ListCohortsRow, error) {
+	rows, err := q.db.Query(ctx, listCohorts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCohortsRow
+	for rows.Next() {
+		var i ListCohortsRow
+		if err := rows.Scan(&i.CohortID, &i.SiteCount, &i.TotalCapacityKw); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listSiteCountries = `-- name: ListSiteCountries :many
@@ -141,8 +223,49 @@ func (q *Queries) ListSiteCountries(ctx context.Context, cohortID pgtype.Text) (
 	return items, nil
 }
 
+const listSiteLocations = `-- name: ListSiteLocations :many
+SELECT site_id, gps_lat, gps_lng, system_size_kw FROM sites
+WHERE $1::text IS NULL OR cohort_id = $1
+`
+
+type ListSiteLocationsRow struct {
+	SiteID       string
+	GpsLat       pgtype.Float8
+	GpsLng       pgtype.Float8
+	SystemSizeKw pgtype.Numeric
+}
+
+// Site location + capacity, for fleet-wide Performance Ratio — each site
+// needs its own separate irradiance fetch (unlike the fleet energy
+// rollup, this genuinely can't be answered by one query, since the data
+// comes from an external weather API keyed by lat/lng).
+func (q *Queries) ListSiteLocations(ctx context.Context, cohortID pgtype.Text) ([]ListSiteLocationsRow, error) {
+	rows, err := q.db.Query(ctx, listSiteLocations, cohortID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSiteLocationsRow
+	for rows.Next() {
+		var i ListSiteLocationsRow
+		if err := rows.Scan(
+			&i.SiteID,
+			&i.GpsLat,
+			&i.GpsLng,
+			&i.SystemSizeKw,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSites = `-- name: ListSites :many
-SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at FROM sites
+SELECT site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, is_primary, created_at FROM sites
 WHERE ($1::text IS NULL OR site_id = $1)
   AND (
     $2::timestamptz IS NULL
@@ -188,6 +311,7 @@ func (q *Queries) ListSites(ctx context.Context, arg ListSitesParams) ([]Site, e
 			&i.InstallDate,
 			&i.Timezone,
 			&i.Country,
+			&i.IsPrimary,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -200,9 +324,48 @@ func (q *Queries) ListSites(ctx context.Context, arg ListSitesParams) ([]Site, e
 	return items, nil
 }
 
+const setSitePrimary = `-- name: SetSitePrimary :one
+UPDATE sites SET is_primary = true WHERE site_id = $1
+RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, is_primary, created_at
+`
+
+func (q *Queries) SetSitePrimary(ctx context.Context, siteID string) (Site, error) {
+	row := q.db.QueryRow(ctx, setSitePrimary, siteID)
+	var i Site
+	err := row.Scan(
+		&i.SiteID,
+		&i.CohortID,
+		&i.Address,
+		&i.Name,
+		&i.GpsLat,
+		&i.GpsLng,
+		&i.InverterMakeModel,
+		&i.SystemSizeKw,
+		&i.InstallDate,
+		&i.Timezone,
+		&i.Country,
+		&i.IsPrimary,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const unsetAllPrimarySites = `-- name: UnsetAllPrimarySites :exec
+UPDATE sites SET is_primary = false WHERE is_primary = true
+`
+
+// Paired with SetSitePrimary below (run first, in the same registry
+// method) — the unique index (migrations/0011_primary_site.sql) is the
+// real backstop guaranteeing at most one primary site even without an
+// explicit transaction wrapping both statements.
+func (q *Queries) UnsetAllPrimarySites(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, unsetAllPrimarySites)
+	return err
+}
+
 const updateSiteCountry = `-- name: UpdateSiteCountry :one
 UPDATE sites SET country = $2 WHERE site_id = $1
-RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, created_at
+RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, is_primary, created_at
 `
 
 type UpdateSiteCountryParams struct {
@@ -228,6 +391,7 @@ func (q *Queries) UpdateSiteCountry(ctx context.Context, arg UpdateSiteCountryPa
 		&i.InstallDate,
 		&i.Timezone,
 		&i.Country,
+		&i.IsPrimary,
 		&i.CreatedAt,
 	)
 	return i, err

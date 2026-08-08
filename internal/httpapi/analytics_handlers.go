@@ -114,6 +114,40 @@ func (h *handlers) siteSpecificYield(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"unit": "kWh/kWp", "period": period, "points": out})
 }
 
+func (h *handlers) fleetSpecificYield(c echo.Context) error {
+	period, err := parsePeriod(c)
+	if err != nil {
+		return err
+	}
+	from, to, err := parseAnalyticsRange(c)
+	if err != nil {
+		return err
+	}
+	var cohortID *string
+	if v := c.QueryParam("cohort_id"); v != "" {
+		cohortID = &v
+	}
+
+	points, err := h.deps.Analytics.FleetSpecificYield(c.Request().Context(), cohortID, period, from, to)
+	if err != nil {
+		if err == registry.ErrNoSystemSize {
+			return echo.NewHTTPError(http.StatusBadRequest, "no site in this fleet has system_size_kw configured — cannot compute specific yield")
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	out := make([]yieldPointResponse, 0, len(points))
+	for _, p := range points {
+		out = append(out, yieldPointResponse{
+			PeriodStart:            p.PeriodStart,
+			EnergyKWh:              p.EnergyKWh,
+			SystemSizeKW:           p.SystemSizeKW,
+			SpecificYieldKWhPerKWp: p.SpecificYieldKWhPerKWp,
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"unit": "kWh/kWp", "period": period, "points": out})
+}
+
 type peakPointResponse struct {
 	Day         time.Time  `json:"day"`
 	PeakPowerKW float64    `json:"peak_power_kw"`
@@ -148,7 +182,7 @@ type capacityFactorPointResponse struct {
 const capacityFactorDefinition = "Energy actually generated divided by a theoretical maximum derived from " +
 	"nameplate system size and elapsed time only — no weather/irradiance adjustment. " +
 	"This is NOT Performance Ratio (PR), which compares against expected output for " +
-	"prevailing conditions; PR is deferred pending a weather-data source decision."
+	"prevailing conditions — see GET .../analytics/performance-ratio for that."
 
 func (h *handlers) siteCapacityFactor(c echo.Context) error {
 	period, err := parsePeriod(c)
@@ -182,4 +216,124 @@ func (h *handlers) siteCapacityFactor(c echo.Context) error {
 		"period":     period,
 		"points":     out,
 	})
+}
+
+type performanceRatioPointResponse struct {
+	PeriodStart         time.Time `json:"period_start"`
+	EnergyKWh           float64   `json:"energy_kwh"`
+	ExpectedEnergyKWh   float64   `json:"expected_energy_kwh"`
+	PerformanceRatioPct float64   `json:"performance_ratio_pct"`
+}
+
+const performanceRatioDefinition = "Energy actually generated divided by the expected output for the " +
+	"sunlight this site actually received (historical irradiance, not a forecast) — the weather-adjusted " +
+	"metric Capacity Factor deliberately isn't. A healthy system should sit fairly steady here across " +
+	"different weather; a drop usually means a real fault (soiling, shading, degradation), not just a cloudy day."
+
+func performanceRatioErrorToHTTP(err error) error {
+	switch err {
+	case registry.ErrNoSystemSize:
+		return echo.NewHTTPError(http.StatusBadRequest, "no system_size_kw configured — cannot compute performance ratio")
+	case registry.ErrNoLocation:
+		return echo.NewHTTPError(http.StatusBadRequest, "no location (gps_lat/gps_lng) set — performance ratio needs a location to look up historical sunlight")
+	default:
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+}
+
+func (h *handlers) sitePerformanceRatio(c echo.Context) error {
+	period, err := parsePeriod(c)
+	if err != nil {
+		return err
+	}
+	from, to, err := parseAnalyticsRange(c)
+	if err != nil {
+		return err
+	}
+
+	points, err := h.deps.Analytics.SitePerformanceRatio(c.Request().Context(), c.Param("site_id"), period, from, to)
+	if err != nil {
+		return performanceRatioErrorToHTTP(err)
+	}
+
+	out := make([]performanceRatioPointResponse, 0, len(points))
+	for _, p := range points {
+		out = append(out, performanceRatioPointResponse{
+			PeriodStart:         p.PeriodStart,
+			EnergyKWh:           p.EnergyKWh,
+			ExpectedEnergyKWh:   p.ExpectedEnergyKWh,
+			PerformanceRatioPct: p.PerformanceRatioPct,
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"definition": performanceRatioDefinition,
+		"period":     period,
+		"points":     out,
+	})
+}
+
+func (h *handlers) fleetPerformanceRatio(c echo.Context) error {
+	period, err := parsePeriod(c)
+	if err != nil {
+		return err
+	}
+	from, to, err := parseAnalyticsRange(c)
+	if err != nil {
+		return err
+	}
+	var cohortID *string
+	if v := c.QueryParam("cohort_id"); v != "" {
+		cohortID = &v
+	}
+
+	points, err := h.deps.Analytics.FleetPerformanceRatio(c.Request().Context(), cohortID, period, from, to)
+	if err != nil {
+		return performanceRatioErrorToHTTP(err)
+	}
+
+	out := make([]performanceRatioPointResponse, 0, len(points))
+	for _, p := range points {
+		out = append(out, performanceRatioPointResponse{
+			PeriodStart:         p.PeriodStart,
+			EnergyKWh:           p.EnergyKWh,
+			ExpectedEnergyKWh:   p.ExpectedEnergyKWh,
+			PerformanceRatioPct: p.PerformanceRatioPct,
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"definition": performanceRatioDefinition,
+		"period":     period,
+		"points":     out,
+	})
+}
+
+func (h *handlers) currentGeneration(c echo.Context) error {
+	kw, err := h.deps.Fleet.CurrentGeneration(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{"current_power_kw": kw})
+}
+
+type topSiteResponse struct {
+	SiteID                 string   `json:"site_id"`
+	Name                   *string  `json:"name,omitempty"`
+	EnergyKWh              float64  `json:"energy_kwh"`
+	SystemSizeKW           *float64 `json:"system_size_kw,omitempty"`
+	SpecificYieldKWhPerKWp float64  `json:"specific_yield_kwh_per_kwp"`
+}
+
+func (h *handlers) topSitesToday(c echo.Context) error {
+	sites, err := h.deps.Analytics.TopSitesToday(c.Request().Context(), parseLimit(c))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	out := make([]topSiteResponse, 0, len(sites))
+	for _, s := range sites {
+		out = append(out, topSiteResponse{
+			SiteID: s.SiteID, Name: s.Name, EnergyKWh: s.EnergyKWh,
+			SystemSizeKW: s.SystemSizeKW, SpecificYieldKWhPerKWp: s.SpecificYieldKWhPerKWp,
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": out})
 }

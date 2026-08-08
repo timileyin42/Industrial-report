@@ -300,6 +300,7 @@ type Site struct {
 	InstallDate       pgtype.Date
 	Timezone          string
 	Country           string
+	IsPrimary         bool
 	CreatedAt         pgtype.Timestamptz
 }
 

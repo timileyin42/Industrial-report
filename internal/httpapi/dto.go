@@ -20,6 +20,7 @@ type siteResponse struct {
 	SystemSizeKW      *float64  `json:"system_size_kw,omitempty"`
 	Timezone          string    `json:"timezone"`
 	Country           string    `json:"country"`
+	IsPrimary         bool      `json:"is_primary"`
 	CreatedAt         time.Time `json:"created_at"`
 }
 
@@ -35,6 +36,7 @@ func toSiteResponse(s db.Site) siteResponse {
 		SystemSizeKW:      numericPtr(s.SystemSizeKw),
 		Timezone:          s.Timezone,
 		Country:           s.Country,
+		IsPrimary:         s.IsPrimary,
 		CreatedAt:         s.CreatedAt.Time,
 	}
 }

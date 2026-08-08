@@ -52,6 +52,7 @@ func main() {
 	anomaly := registry.NewAnomaly(analytics)
 	auditLog := registry.NewAuditLog(queries)
 	ingestionAudit := registry.NewIngestionAudit(queries)
+	alerts := registry.NewAlerts(fleet, anomaly, queries)
 
 	// APP_BASE_URL builds invite/reset links (e.g. https://app.cleanenergyanalytics.co.uk)
 	// — defaults to the Vite dev server origin so local dev works without
@@ -86,6 +87,7 @@ func main() {
 		Invites:        invites,
 		PasswordReset:  passwordReset,
 		Exports:        exports,
+		Alerts:         alerts,
 		Issuer:         auth.NewTokenIssuer(jwtSecret),
 	})
 

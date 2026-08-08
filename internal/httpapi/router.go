@@ -31,6 +31,7 @@ type Deps struct {
 	Invites        *registry.Invites
 	PasswordReset  *registry.PasswordReset
 	Exports        *registry.Exports
+	Alerts         *registry.Alerts
 	Issuer         auth.TokenIssuer
 }
 
@@ -62,12 +63,18 @@ func NewRouter(deps Deps) *echo.Echo {
 	operatorOnly := auth.RequireRole(domain.RoleOperator)
 
 	authed.POST("/users", h.createUser, operatorOnly)
+	authed.GET("/users", h.listUsers, operatorOnly)
+	authed.PATCH("/users/:user_id/disabled", h.setUserDisabled, operatorOnly)
 	authed.POST("/users/invite", h.createInvite, operatorOnly)
 
 	authed.POST("/sites", h.createSite, operatorOnly)
 	authed.GET("/sites", h.listSites)
+	authed.GET("/sites/primary", h.getPrimarySite)
+	authed.GET("/cohorts", h.listCohorts, operatorOnly)
+	authed.GET("/fleet/alerts", h.fleetAlerts, operatorOnly)
 	authed.GET("/sites/:site_id", h.getSite, auth.RequireSiteAccess(h.resolveSiteFromParam))
 	authed.PATCH("/sites/:site_id/country", h.updateSiteCountry, operatorOnly)
+	authed.PATCH("/sites/:site_id/primary", h.setSitePrimary, operatorOnly)
 	authed.GET("/sites/:site_id/telemetry", h.listTelemetry, auth.RequireSiteAccess(h.resolveSiteFromParam))
 
 	authed.POST("/devices", h.registerDevice, operatorOnly, registerLimiter)
@@ -84,6 +91,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	siteAccess := auth.RequireSiteAccess(h.resolveSiteFromParam)
 	authed.GET("/sites/:site_id/analytics/energy", h.siteEnergy, siteAccess)
 	authed.GET("/sites/:site_id/analytics/specific-yield", h.siteSpecificYield, siteAccess)
+	authed.GET("/sites/:site_id/analytics/performance-ratio", h.sitePerformanceRatio, siteAccess)
 	authed.GET("/sites/:site_id/analytics/peak", h.sitePeak, siteAccess)
 	authed.GET("/sites/:site_id/analytics/capacity-factor", h.siteCapacityFactor, siteAccess)
 	authed.GET("/sites/:site_id/analytics/emissions", h.siteEmissions, siteAccess)
@@ -94,7 +102,12 @@ func NewRouter(deps Deps) *echo.Echo {
 
 	// Phase 3 — analytics/KPIs (fleet-wide, operator-only: cross-site
 	// comparisons leak fleet-wide distribution by construction)
+	authed.GET("/fleet/current-generation", h.currentGeneration, operatorOnly)
+	authed.GET("/fleet/top-sites", h.topSitesToday, operatorOnly)
+	authed.GET("/fleet/ingestion-status", h.ingestionStatus, operatorOnly)
 	authed.GET("/fleet/analytics/energy", h.fleetEnergy, operatorOnly)
+	authed.GET("/fleet/analytics/specific-yield", h.fleetSpecificYield, operatorOnly)
+	authed.GET("/fleet/analytics/performance-ratio", h.fleetPerformanceRatio, operatorOnly)
 	authed.GET("/fleet/analytics/emissions", h.fleetEmissions, operatorOnly)
 	authed.GET("/fleet/analytics/compare/fleet", h.compareFleet, operatorOnly)
 	authed.GET("/fleet/analytics/benchmark", h.benchmarkSegments, operatorOnly)

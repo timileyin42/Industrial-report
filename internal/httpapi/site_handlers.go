@@ -88,6 +88,47 @@ func (h *handlers) updateSiteCountry(c echo.Context) error {
 	return c.JSON(http.StatusOK, toSiteResponse(site))
 }
 
+// setSitePrimary marks a site as the fleet's one primary/home site —
+// what the Fleet Dashboard's weather widget resolves its location from.
+func (h *handlers) setSitePrimary(c echo.Context) error {
+	claims, _ := auth.GetClaims(c)
+	site, err := h.deps.Sites.SetPrimary(c.Request().Context(), claims.UserID, c.Param("site_id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "site not found")
+	}
+	return c.JSON(http.StatusOK, toSiteResponse(site))
+}
+
+// getPrimarySite backs the Fleet Dashboard's weather widget — a
+// dedicated lookup rather than having the frontend guess from a capped
+// site list, so it stays correct regardless of fleet size or how sites
+// happen to be sorted.
+func (h *handlers) getPrimarySite(c echo.Context) error {
+	site, err := h.deps.Sites.PrimarySite(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "no primary site set")
+	}
+	return c.JSON(http.StatusOK, toSiteResponse(site))
+}
+
+type cohortResponse struct {
+	CohortID        string  `json:"cohort_id"`
+	SiteCount       int64   `json:"site_count"`
+	TotalCapacityKW float64 `json:"total_capacity_kw"`
+}
+
+func (h *handlers) listCohorts(c echo.Context) error {
+	cohorts, err := h.deps.Sites.ListCohorts(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	items := make([]cohortResponse, 0, len(cohorts))
+	for _, co := range cohorts {
+		items = append(items, cohortResponse{CohortID: co.CohortID, SiteCount: co.SiteCount, TotalCapacityKW: co.TotalCapacityKW})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": items})
+}
+
 func (h *handlers) getSite(c echo.Context) error {
 	site, err := h.deps.Sites.Get(c.Request().Context(), c.Param("site_id"))
 	if err != nil {

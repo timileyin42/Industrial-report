@@ -27,6 +27,16 @@ type Querier interface {
 	CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserActionAuditLog(ctx context.Context, arg CreateUserActionAuditLogParams) error
+	// Sum of the most recent power_kw reading per online (not revoked,
+	// contacted within the online threshold) device — a live "how much
+	// power right now" figure, distinct from any cumulative/historical
+	// energy total elsewhere on this platform. A LATERAL join per device,
+	// not a rollup — deliberately live, not pre-aggregated.
+	CurrentFleetGeneration(ctx context.Context, onlineCutoff pgtype.Timestamptz) (float64, error)
+	// Same optional-cohort-filter pattern as ListFleetDailyRollup — used by
+	// Analytics.FleetSpecificYield to normalize fleet-wide energy against
+	// fleet-wide (or cohort-wide) capacity, not one site's.
+	FleetCapacityForCohort(ctx context.Context, cohortID pgtype.Text) (pgtype.Numeric, error)
 	// Ratio-of-sums coverage (sum(actual)/sum(expected) across all devices),
 	// not an average of per-device percentages — avoids a brand-new device's
 	// tiny expected-readings denominator distorting the fleet-wide figure.
@@ -43,6 +53,7 @@ type Querier interface {
 	// Continuous aggregates can't express argmax, so the peak reading's time
 	// of day is resolved via a narrow indexed point lookup instead of a scan.
 	GetPeakReadingTimeForDeviceDay(ctx context.Context, arg GetPeakReadingTimeForDeviceDayParams) (pgtype.Timestamptz, error)
+	GetPrimarySite(ctx context.Context) (Site, error)
 	// Reset-day fallback: ordered readings for one device on one day. The
 	// registry computes true daily energy as sum(max(0, e[i] - e[i-1])) over
 	// consecutive readings — this correctly captures both the pre-reset and
@@ -53,12 +64,23 @@ type Querier interface {
 	GetSite(ctx context.Context, siteID string) (Site, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	// Most recent message the ingestor has seen, fleet-wide, regardless of
+	// whether it passed validation — the Dashboard's ingestion-pipeline
+	// status widget uses "how long ago was that" as its health signal, not
+	// a synthetic uptime percentage this platform has no way to compute.
+	LastIngestionReceivedAt(ctx context.Context) (pgtype.Timestamptz, error)
 	// Small, TTL-bounded result set — see migrations/0007's comment on why
 	// token_hash isn't looked up by equality.
 	ListActiveInvites(ctx context.Context) ([]Invite, error)
 	// Same small, TTL-bounded scan-and-bcrypt-compare pattern as
 	// ListActiveInvites — see migrations/0007's comment.
 	ListActivePasswordResetTokens(ctx context.Context) ([]PasswordResetToken, error)
+	// Distinct cohorts currently in use, with aggregated site count/capacity
+	// — cohort_id is a free-text grouping field on sites (no dedicated
+	// cohorts table), so this is the closest thing to a "list cohorts"
+	// query: derived from what's actually assigned, not a separate managed
+	// entity a cohort can exist without ever having a site in it.
+	ListCohorts(ctx context.Context) ([]ListCohortsRow, error)
 	// site_filter NULL means "all devices" (operator, no ?site_id= filter).
 	ListDevices(ctx context.Context, arg ListDevicesParams) ([]Device, error)
 	ListEmissionFactorHistory(ctx context.Context, arg ListEmissionFactorHistoryParams) ([]GridEmissionFactor, error)
@@ -75,6 +97,15 @@ type Querier interface {
 	// only stores device_id. A device that's since been deleted still shows
 	// its audit rows with site_id NULL rather than disappearing.
 	ListIngestionAuditLog(ctx context.Context, arg ListIngestionAuditLogParams) ([]ListIngestionAuditLogRow, error)
+	// Latest reading per device that reported status='fault' within the
+	// window, one row per device (DISTINCT ON), for the Alerts page. A raw
+	// scan over recent telemetry, not a rollup — telemetry_daily doesn't
+	// track status, and this is bounded to a short recent window, not the
+	// full history CLAUDE.md's "hit roll-ups" rule is about.
+	ListRecentFaultReadings(ctx context.Context, since pgtype.Timestamptz) ([]ListRecentFaultReadingsRow, error)
+	// Feeds the Alerts page — a revocation is a real, timestamped event
+	// worth surfacing there, same as an offline/fault condition.
+	ListRecentlyRevokedDevices(ctx context.Context, since pgtype.Timestamptz) ([]Device, error)
 	// Site->country lookup for fleet-wide emissions, which must resolve each
 	// site's own grid factor rather than one global default (see
 	// internal/registry/emissions.go FleetEmissions). Unpaginated: this is an
@@ -92,6 +123,11 @@ type Querier interface {
 	// keyset — site_id is already the sites PK, so no secondary tiebreaker is
 	// needed the way created_at-sorted lists elsewhere need one).
 	ListSiteHealth(ctx context.Context, arg ListSiteHealthParams) ([]ListSiteHealthRow, error)
+	// Site location + capacity, for fleet-wide Performance Ratio — each site
+	// needs its own separate irradiance fetch (unlike the fleet energy
+	// rollup, this genuinely can't be answered by one query, since the data
+	// comes from an external weather API keyed by lat/lng).
+	ListSiteLocations(ctx context.Context, cohortID pgtype.Text) ([]ListSiteLocationsRow, error)
 	// Keyset pagination: pass cursor_created_at/cursor_site_id as NULL for the
 	// first page. When restricting to a single site (restricted-role callers),
 	// pass site_filter; NULL means "all sites" (operator).
@@ -109,6 +145,8 @@ type Querier interface {
 	// browsing/reporting UI on this table is Phase 3"). Keyset-paginated on
 	// (created_at, id); every filter is optional (NULL = don't filter on it).
 	ListUserActionAuditLog(ctx context.Context, arg ListUserActionAuditLogParams) ([]ListUserActionAuditLogRow, error)
+	// Keyset pagination, same convention as ListSites/ListDevices.
+	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	MarkExportJobCompleted(ctx context.Context, arg MarkExportJobCompletedParams) error
 	MarkExportJobFailed(ctx context.Context, arg MarkExportJobFailedParams) error
 	MarkExportJobRunning(ctx context.Context, id int64) error
@@ -116,6 +154,16 @@ type Querier interface {
 	MarkPasswordResetTokenUsed(ctx context.Context, id int64) error
 	RevokeDevice(ctx context.Context, deviceID string) (Device, error)
 	RotateDeviceSecret(ctx context.Context, arg RotateDeviceSecretParams) (Device, error)
+	SetSitePrimary(ctx context.Context, siteID string) (Site, error)
+	// disabled_at itself, not a boolean flag — NULL means active, a real
+	// timestamp means disabled since that moment (audit-friendly, matches
+	// devices.revoked_at's existing convention in this codebase).
+	SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) (User, error)
+	// Paired with SetSitePrimary below (run first, in the same registry
+	// method) — the unique index (migrations/0011_primary_site.sql) is the
+	// real backstop guaranteeing at most one primary site even without an
+	// explicit transaction wrapping both statements.
+	UnsetAllPrimarySites(ctx context.Context) error
 	// Corrects a site's country after creation — needed because the
 	// migration backfilling this column had to guess 'NG' for every
 	// pre-existing row (see migrations/0010_site_country.sql).

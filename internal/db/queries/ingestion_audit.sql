@@ -23,3 +23,10 @@ WHERE
     )
 ORDER BY l.received_at DESC, l.id DESC
 LIMIT sqlc.arg('page_limit');
+
+-- name: LastIngestionReceivedAt :one
+-- Most recent message the ingestor has seen, fleet-wide, regardless of
+-- whether it passed validation — the Dashboard's ingestion-pipeline
+-- status widget uses "how long ago was that" as its health signal, not
+-- a synthetic uptime percentage this platform has no way to compute.
+SELECT max(received_at)::timestamptz AS last_received_at FROM ingestion_audit_log;

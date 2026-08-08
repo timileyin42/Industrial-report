@@ -73,6 +73,27 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 	return i, err
 }
 
+const currentFleetGeneration = `-- name: CurrentFleetGeneration :one
+SELECT coalesce(sum(latest.power_kw), 0)::double precision AS current_power_kw
+FROM devices d
+JOIN LATERAL (
+    SELECT power_kw FROM telemetry t WHERE t.device_id = d.device_id ORDER BY t.ts DESC LIMIT 1
+) latest ON true
+WHERE d.revoked_at IS NULL AND d.last_contact_at > $1::timestamptz
+`
+
+// Sum of the most recent power_kw reading per online (not revoked,
+// contacted within the online threshold) device — a live "how much
+// power right now" figure, distinct from any cumulative/historical
+// energy total elsewhere on this platform. A LATERAL join per device,
+// not a rollup — deliberately live, not pre-aggregated.
+func (q *Queries) CurrentFleetGeneration(ctx context.Context, onlineCutoff pgtype.Timestamptz) (float64, error) {
+	row := q.db.QueryRow(ctx, currentFleetGeneration, onlineCutoff)
+	var current_power_kw float64
+	err := row.Scan(&current_power_kw)
+	return current_power_kw, err
+}
+
 const getDevice = `-- name: GetDevice :one
 SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at FROM devices WHERE device_id = $1
 `
@@ -120,6 +141,88 @@ func (q *Queries) ListDevices(ctx context.Context, arg ListDevicesParams) ([]Dev
 		arg.CursorDeviceID,
 		arg.PageLimit,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Device
+	for rows.Next() {
+		var i Device
+		if err := rows.Scan(
+			&i.DeviceID,
+			&i.SiteID,
+			&i.SecretHash,
+			&i.RevokedAt,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.SecretLastRotatedAt,
+			&i.InstallNotes,
+			&i.LastContactAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentFaultReadings = `-- name: ListRecentFaultReadings :many
+SELECT DISTINCT ON (device_id) device_id, site_id, ts, status
+FROM telemetry
+WHERE status = 'fault' AND ts > $1::timestamptz
+ORDER BY device_id, ts DESC
+`
+
+type ListRecentFaultReadingsRow struct {
+	DeviceID string
+	SiteID   string
+	Ts       pgtype.Timestamptz
+	Status   ReadingStatus
+}
+
+// Latest reading per device that reported status='fault' within the
+// window, one row per device (DISTINCT ON), for the Alerts page. A raw
+// scan over recent telemetry, not a rollup — telemetry_daily doesn't
+// track status, and this is bounded to a short recent window, not the
+// full history CLAUDE.md's "hit roll-ups" rule is about.
+func (q *Queries) ListRecentFaultReadings(ctx context.Context, since pgtype.Timestamptz) ([]ListRecentFaultReadingsRow, error) {
+	rows, err := q.db.Query(ctx, listRecentFaultReadings, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRecentFaultReadingsRow
+	for rows.Next() {
+		var i ListRecentFaultReadingsRow
+		if err := rows.Scan(
+			&i.DeviceID,
+			&i.SiteID,
+			&i.Ts,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentlyRevokedDevices = `-- name: ListRecentlyRevokedDevices :many
+SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at FROM devices
+WHERE revoked_at IS NOT NULL AND revoked_at > $1::timestamptz
+ORDER BY revoked_at DESC
+`
+
+// Feeds the Alerts page — a revocation is a real, timestamped event
+// worth surfacing there, same as an offline/fault condition.
+func (q *Queries) ListRecentlyRevokedDevices(ctx context.Context, since pgtype.Timestamptz) ([]Device, error) {
+	rows, err := q.db.Query(ctx, listRecentlyRevokedDevices, since)
 	if err != nil {
 		return nil, err
 	}

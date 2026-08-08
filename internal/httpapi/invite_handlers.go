@@ -39,11 +39,7 @@ func (h *handlers) createInvite(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, userResponse{
-		Email:  user.Email,
-		Role:   domain.Role(user.Role),
-		SiteID: textPtr(user.SiteID),
-	})
+	return c.JSON(http.StatusCreated, toUserResponse(user))
 }
 
 type acceptInviteRequest struct {

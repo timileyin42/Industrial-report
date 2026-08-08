@@ -1,4 +1,4 @@
-# Zgnis Solar Platform — What We've Built (Demo & Walkthrough Guide)
+# Clean Energy Analytics — What We've Built (Demo & Walkthrough Guide)
 
 This is a plain-English guide to what exists today, why it exists, and how
 to talk through it live. It's written for the demo, not for developers —
@@ -15,10 +15,11 @@ power I'm making right now." Those messages travel over the internet to
 our server, get checked for obvious nonsense, get stored, and then get
 turned into the numbers an operator actually cares about — how much energy
 a site made this month, how it compares to other sites, how much CO₂ it
-avoided. **Phases 0 through 3 build that entire pipeline, minus the actual
-visual dashboard** — everything today is proven through direct API calls
-(what a future dashboard would call behind the scenes), not through
-screens yet.
+avoided. **That whole pipeline exists and works today, and — unlike the
+early phases — it's no longer API-only.** There's a real web dashboard an
+operator or restricted user actually logs into, plus a public marketing
+site, both built on top of the same APIs this guide's demo script exercises
+directly.
 
 ## 2. The pipeline, plain-English
 
@@ -29,6 +30,7 @@ Solar inverter → little box on-site → sends a message over the internet
    → stores it in the database
    → an overnight "summarizer" pre-computes daily totals per device
    → our API hands out raw data AND summarized KPIs to whoever's allowed to see them
+   → the dashboard (or a direct API call) is how a person actually sees it
 ```
 
 - **Mosquitto** is just message plumbing. It knows nothing about solar
@@ -38,227 +40,281 @@ Solar inverter → little box on-site → sends a message over the internet
   a solar reading means. It's the "quality control" step.
 - **The database** (TimescaleDB, a version of Postgres built for
   time-stamped data) is where every reading lives permanently.
-- **The summarizer** (new since Phase 3 — a Timescale "continuous
-  aggregate") is a background job that keeps a running daily total per
-  device, so KPI questions like "how much energy did this site make this
-  month" don't have to re-scan every single reading ever taken. This is
-  the difference between a query taking milliseconds vs. minutes once
-  there's years of data.
+- **The summarizer** (a Timescale "continuous aggregate") is a background
+  job that keeps a running daily total per device, so KPI questions like
+  "how much energy did this site make this month" don't have to re-scan
+  every single reading ever taken.
 - **The API** is the only door into that data — nobody, not even our own
   dashboard, is allowed to read the database directly. Everything goes
   through the API so access rules are enforced in one place.
+- **The dashboard** is a web app that calls that same API — it has no
+  special back-door access, so anything demonstrated through the API in
+  this guide is exactly what a real user sees on screen.
 
-## 3. What each phase actually delivered
+## 3. What's been built, phase by phase
 
 ### Phase 0 — "prove the pipe works at all"
-One simulated device, one message, one chart-ready endpoint. No login, no
-security, no rules — purely "can data get from a device to a chart." ✅ Done.
+One simulated device, one message, one chart-ready endpoint. ✅ Done.
 
 ### Phase 1 — "make it a real, access-controlled system"
-- **Device registry**: an admin can create a site and register a device
-  through the API (not by hand-editing the database anymore). Registering
-  a device generates it a secret password, shown to you **exactly once** —
-  if you lose it, you rotate it for a new one, you never get the old one back.
-- **Login & roles**: two kinds of accounts —
-  - **Operator** — sees everything, every site, the whole fleet.
-  - **Restricted** — locked to exactly one site. If a restricted user tries
-    to look at a different site's data — even by guessing a URL — they get
-    a flat **403 Forbidden**, not the data, not even a "not found." This is
-    enforced on the server, so it can't be bypassed by a clever app user.
-- **Admin audit trail**: every admin action (create a site, register a
-  device, revoke a device, log in) is permanently logged with who did it
-  and when — separate from the data-quality log below.
+- **Device registry**: create a site, register a device. Registering a
+  device generates it a secret password, shown **exactly once** — lost it
+  means rotating to a new one, never recovering the old one.
+- **Login & roles** — **operator** (sees the whole fleet) vs. **restricted**
+  (locked to exactly one site, enforced server-side on every request —
+  guessing a URL to another site gets a flat 403, never data, never even
+  "not found").
+- **Admin audit trail** — every admin action is permanently logged with
+  who did it and when, separate from the data-quality log.
 
 ### Phase 2 — "catch bad data and know when a device goes dark"
-Validation rules, gap/offline detection, and a fleet health view — see
-section 4 for the specific numbers and section 5 for the "rejected vs.
-flagged" and "offline vs. data gap" distinctions, both still accurate today.
+Validation rules, gap/offline detection, fleet health view — see section 5
+for the "rejected vs. flagged" and "offline vs. data gap" distinctions.
 
 ### Phase 3 — "turn raw readings into the numbers people actually want"
-This is the analytics layer — the part a client actually reads, rather
-than the plumbing underneath it.
+Energy, specific yield, peak output, capacity factor, CO₂ avoided
+(client-confirmed factor, never guessed), fleet comparisons/benchmarking,
+cohorts, a trailing-baseline anomaly flag, CSV export, browsable admin
+audit log. See section 4 for the specific thresholds behind these.
 
-- **Energy generated** — daily, weekly, or monthly, per site or fleet-wide.
-- **Specific yield (kWh per kWp)** — energy normalized by system size, so a
-  tiny site and a huge site can be compared fairly.
-- **Peak output** — the highest instantaneous power a site hit, and exactly
-  when.
-- **Capacity factor** — how hard a site is working relative to its
-  theoretical maximum, assuming it ran flat-out 24/7. (See section 4 for
-  why this is deliberately *not* called "Performance Ratio.")
-- **CO₂ avoided** — energy generated × a configurable "how dirty is the
-  grid" number, reported in kg and tonnes, with the exact factor used
-  shown on every figure. **Nothing is computed until an operator explicitly
-  sets that number** — see section 4.
-- **Comparisons** — a site against its own last period, a site against the
-  fleet average and percentile rank, and segmented views by system size or
-  inverter brand.
-- **Fleet trends** — total installed capacity and total energy over time,
-  month-on-month.
-- **Cohorts** — if sites are grouped into projects, a cohort view rolls up
-  energy and capacity for just that group.
-- **Anomaly flags** — a coarse "this site's output dropped off a cliff
-  compared to its own recent normal" check (see section 4 — this is
-  deliberately simple, not weather-aware).
-- **CSV export** — raw telemetry or period summaries, downloadable.
-- **Admin audit log, browsable** — Phase 1 started logging every admin
-  action; Phase 3 is the first time you can actually query that log
-  (who did what, when, filtered by action/user/date).
+### Phase 4 — "harden and scale it"
+- **TLS wiring** on every hop (device→broker, API→dashboard) — dev-cert
+  verified locally; a real deployment swaps in a real certificate (see
+  section 9).
+- **Invites & password reset, by real email** — via Resend. There's no
+  public sign-up (see section 6) — an operator invites a user, they get a
+  real email with a time-limited link to set their own password.
+- **Async CSV/report exports** — queued jobs, files land in Cloudflare R2,
+  downloaded via a time-limited link rather than served straight through
+  the API process.
+- **Retention policy** — raw telemetry auto-expires after a configurable
+  window (currently 2 years, a placeholder pending client confirmation);
+  the daily summary rollup is kept indefinitely since it's what most
+  historical queries actually need.
+- **Rate limiting** on public-facing endpoints (login, invite, reset).
+- **Load testing** — a dedicated `cmd/loadtest` tool, results in
+  `docs/load-test-results.md`.
+- **Full OpenAPI spec** — `docs/openapi.yaml`.
+
+### Frontend build — the actual dashboard and marketing site
+A full React/TypeScript app: login, an app shell (sidebar + top nav), Fleet
+Dashboard, Sites, Devices, Fleet/Site Analytics, Fleet Health, Audit Log,
+Ingestion Log, Invite User, Emission Factor settings, plus a 4-page public
+marketing site (Home, Features, Solutions, Company) and the new Terms/
+Privacy/Security pages (section 10). Redesigned this session into a light/
+glass visual system (see section 8) — the current visual language, not a
+first draft.
+
+### Per-site country / multi-grid emissions
+CO₂-offset reporting used to resolve one global "which country's grid"
+setting for the whole platform. Sites now carry their own `country`,
+resolved per-site (and per-country for a fleet spanning more than one grid)
+instead — see section 6a.
 
 ## 4. The specific limits — what they are and why (the "10kW" question, and friends)
 
 | What | Value today | Plain-English reason |
 |---|---|---|
-| **Power ceiling** | site's rated size × **1.5** | If a site is rated for 2kW, we reject any reading claiming more than 3kW as physically implausible — that's either a broken sensor, a wiring fault, or corrupted data. The 1.5x isn't arbitrary: real inverters are commonly built with some headroom above the panel's rated size, and output can legitimately spike briefly, so we don't want to reject genuine readings — but 1.5x still firmly catches "something is very wrong here" cases like a 2kW site reporting 10kW. |
-| **"Online" cutoff** | **10 minutes** since the device last contacted us at all | If we haven't heard from a device in 10+ minutes, we consider it offline — a real outage. |
-| **Expected reporting interval** | **5 minutes** | Devices are supposed to report every 1–5 minutes. We use the upper end (5 min) as the benchmark for "is this device behind" so we don't flag a perfectly healthy device that's just reporting on the slower end of normal. |
-| **Backfill threshold** | **15 minutes** between when a reading says it happened and when it actually arrived | A device that's been offline buffers its readings and sends them all at once when it reconnects. If a message arrives more than 15 minutes "late," we tag it `backfilled` instead of `metered` — so nobody downstream mistakes old catch-up data for a live reading. |
-| **Coverage window** | **24 hours** | The fleet health view looks at the last 24 hours to calculate "what % of expected readings did we actually get" per site and fleet-wide. |
-| **Anomaly drop threshold** | **50%** below a site's own trailing 7-day average | Deliberately a big, obvious drop, not a subtle one — see below for why. |
+| **Power ceiling** | site's rated size × **1.5** | If a site is rated for 2kW, we reject any reading claiming more than 3kW as physically implausible. 1.5x still firmly catches "something is very wrong here" while not rejecting a genuine brief spike. |
+| **"Online" cutoff** | **10 minutes** since the device last contacted us at all | If we haven't heard from a device in 10+ minutes, we consider it offline. |
+| **Expected reporting interval** | **5 minutes** | Devices are supposed to report every 1–5 minutes; 5 min is the benchmark for "is this device behind." |
+| **Backfill threshold** | **15 minutes** between when a reading says it happened and when it actually arrived | Buffered catch-up data gets tagged `backfilled` instead of `metered`. |
+| **Coverage window** | **24 hours** | Fleet health's "% of expected readings actually received" looks at the last 24 hours. |
+| **Anomaly drop threshold** | **50%** below a site's own trailing 7-day average | Deliberately a big, obvious drop, not a subtle one. |
 
-**All of these are configuration, not hardcoded** — they can be tuned per
-the client's real hardware behavior without changing code, once we see how
-real devices behave in the field versus our current assumptions.
+**All of these are configuration, not hardcoded.**
 
-**Two Phase 3 concepts deserve their own explanation, because they're easy
-to get wrong live:**
+**Two concepts deserve their own explanation, because they're easy to get
+wrong live:**
 
-- **Capacity factor is NOT Performance Ratio (PR).** PR is the "correct"
-  industry metric — it compares what a site actually produced against what
-  it *should have* produced given the actual weather that day (cloud
-  cover, sun angle, etc.). We don't have weather data anywhere in this
-  system yet, so we can't compute real PR. What we compute instead —
-  **capacity factor** — just compares actual output to a flat theoretical
-  maximum (site size × 24 hours), with zero weather adjustment. It's a
-  cruder, honest stand-in, and every single response says so explicitly
-  so nobody mistakes it for PR in a report.
-- **The anomaly check is a blunt instrument, on purpose.** Without weather
-  data, we can't tell "this site made less energy today because it was
-  cloudy" apart from "this site made less energy today because something
-  is actually broken." So instead of trying to be clever, the check only
-  flags a genuinely severe drop (50%+ below the site's own recent normal)
-  — a coarse safety net, not a diagnostic tool. Every anomaly response
-  says this explicitly too.
+- **Capacity factor is NOT Performance Ratio (PR).** PR compares actual
+  output against what it *should have* produced given the real weather
+  that day. We don't have irradiance data, so we compute **capacity
+  factor** instead — actual output vs. a flat theoretical maximum, zero
+  weather adjustment. Every response says so explicitly. (The dashboard
+  does show real *current* weather via Open-Meteo now — see section 8 —
+  but that's a live conditions widget, not an input to this calculation.)
+- **The anomaly check is a blunt instrument, on purpose.** Without
+  irradiance data, we can't tell "cloudy day" apart from "something's
+  actually broken," so it only flags a genuinely severe drop (50%+).
 
 ## 5. The two different "something's wrong" signals — don't mix these up in the demo
 
-This is the single most important distinction to get right when explaining
-Phase 2 (still true in Phase 3):
+- **A rejected reading** — physically impossible. **Never stored**, but
+  logged permanently in a "raw intake" audit trail so nothing is silently
+  dropped without a trace.
+- **A flagged reading** — plausible but noteworthy (e.g. an energy counter
+  reset from an inverter reboot). **Is stored**, exactly as received, just
+  tagged. Energy/yield/CO₂ figures correctly work around a flagged reset
+  day instead of producing a nonsense negative number.
+- **"Offline" vs. "data gap"**:
+  - **Offline** = hasn't contacted us at all — a true outage.
+  - **Data gap** = *is* talking to us, but its latest *accepted* reading is
+    stale — e.g. just reconnected, still working through a backlog.
 
-- **A rejected reading** — physically impossible (negative energy, power
-  wildly over the site's size). This is **never stored** — it's logged in
-  a permanent "raw intake" audit trail (so nothing is ever silently
-  dropped without a trace) but it never touches the real data.
-- **A flagged reading** — plausible but noteworthy (e.g., the device's
-  cumulative energy counter went backwards, which really happens when an
-  inverter reboots or gets replaced). This **is stored**, exactly as
-  received, just tagged so nobody accidentally treats it as a clean data
-  point later. We keep it because for solar generation records that may
-  later be used for verification/emissions reporting, throwing away real
-  readings is worse than flagging them. (Phase 3's energy/yield/CO₂
-  numbers correctly work around a flagged reset day instead of producing
-  a nonsense negative number — verified live.)
-- **"Offline" vs. "data gap"** — two different problems that look similar
-  but aren't:
-  - **Offline** = the device hasn't contacted us at all — a true outage.
-  - **Data gap** = the device *is* talking to us right now, but its latest
-    *accepted* reading is stale — e.g., it just reconnected and is still
-    working through a backlog of buffered readings. Not broken, just behind.
+## 6. How anyone actually gets an account (no public sign-up, by design)
 
-## 6. What's deliberately not built yet (so you're not caught off guard)
+This platform is invite-only, not self-serve — worth stating explicitly
+since it's a common point of confusion:
 
-- **No dashboard/screens yet** — everything above is proven via direct API
-  calls. The visual design system exists (`design/` folder, Stitch export)
-  but no frontend has been wired up to these APIs yet.
-- **No email** (verification, password reset) — genuinely not scheduled to
-  any phase yet; needs a decision on an email provider first.
-- **No push notifications / alerting to a person** — today, "alerts"/
-  anomalies mean "queryable through the API," not "somebody gets pinged."
-  There's no notification channel built yet.
+1. **The very first operator account** for a fresh environment is created
+   via a backend command (`cmd/seed-operator`), not through any web page —
+   there's deliberately no unauthenticated "create the first admin" HTTP
+   route, since that would itself be a security hole.
+2. **Every account after that** comes from an operator using the Invite
+   User page (or `POST /v1/users/invite`) — they enter an email, role, and
+   (for a restricted account) a site; the invitee gets a real email with a
+   link to set their own password.
+
+There is no "Sign Up" button on the marketing site, and that's not a gap —
+there's genuinely nowhere for one to go.
+
+## 6a. Per-site country and multi-grid emissions
+
+Every site now has its own country (a 2-letter code, e.g. `NG`, `GB`),
+required at creation and correctable afterward from Site Detail. This
+matters because CO₂-offset math depends on which grid a site's power
+displaces:
+
+- **A single site's emissions** always resolve through *that site's own*
+  country's emission factor.
+- **A fleet spanning more than one country** sums CO₂ per country using
+  each one's own factor — never blending two different grids' factors into
+  one number. If a country in the mix has no factor configured yet, its
+  sites' generation is excluded from the total (never guessed) and
+  reported separately as "unconfigured," rather than either failing the
+  whole view or silently under-reporting.
+
+## 7. The dashboard: what's real, what's illustrative
+
+Everything on the dashboard is backed by a real API call — no invented
+numbers, per the same discipline the backend already enforces:
+
+- **Fleet Dashboard** — real KPIs (sites, capacity, 30-day energy, CO₂
+  offset), a real weather widget (Open-Meteo, keyless, based on the first
+  site with a saved location), an environmental-impact panel using real
+  EPA GHG-equivalency constants applied to real measured CO₂ data.
+- Metrics with no real data source yet (battery storage, grid import on
+  the dashboard's own "Energy Flow" panel — this platform has no
+  battery/grid telemetry concept) render "Not tracked," never a fabricated
+  figure.
+- The **landing page's** Energy Flow illustration uses example numbers —
+  normal marketing-site practice (like any product screenshot with demo
+  data), not a claim about a specific customer's fleet, and it's called
+  out as such in the code.
+
+## 8. The visual design system
+
+Redesigned this session from an earlier dark-industrial look to a light/
+glass system: soft white/glass cards, sky-blue primary + amber secondary,
+Plus Jakarta Sans throughout, large rounded geometry, soft diffused
+shadows. The landing page's hero and closing CTA use real (rights-checked)
+stock video backgrounds; the "From Chaos to Control" cards on the landing
+page have a springy hover/nudge animation. Adding a site uses an actual
+Google Map (search, click, or drag a pin) that auto-fills address,
+country, and timezone from the picked location — not three separate
+manual fields anymore.
+
+## 9. Deployment status
+
+- **Local/self-hosted infrastructure**: TimescaleDB and Mosquitto run as
+  plain Docker containers — not a managed cloud database/broker. A
+  `docker-compose.yml` now also builds and runs the API, ingestor, and web
+  frontend as containers alongside them, plus one-shot `migrate` and
+  `seed-operator` services.
+- **Target server**: a self-managed VPS, reached over SSH — not yet fully
+  cut over; DNS for the production domain and its `api.` subdomain needs
+  to point at that server before the containers there are live to the
+  public internet.
+- **TLS in production**: terminated at Cloudflare's edge (the domain is
+  proxied through Cloudflare), rather than the API container presenting
+  its own certificate — `API_TLS_CERT_FILE`/`KEY_FILE` are deliberately
+  left unset for this setup.
+- **Object storage**: Cloudflare R2 for exported files, kept private,
+  served only via time-limited presigned links.
+
+## 10. Legal pages
+
+Terms of Service, Privacy Policy, and Security pages now exist (linked
+from the marketing site's footer, which previously pointed nowhere).
+Grounded in what the platform actually stores and does — not generic
+boilerplate — and drafted with reference to Nigeria's NDPA 2023 and the UK
+GDPR/DPA 2018, since the business operates in both. **These still need a
+lawyer's review before going live** — the governing-law jurisdiction and
+contact addresses are explicit placeholders, not finished facts.
+
+## 11. What's deliberately not built yet (so you're not caught off guard)
+
 - **No real Performance Ratio, no weather-aware anomaly detection** — both
-  need a weather/irradiance data source that doesn't exist in this stack
-  yet (see section 4). Capacity factor and the trailing-baseline anomaly
-  check are the honest, weather-free stand-ins.
-- **No PDF reports** — CSV export works today; PDF would mean adding a new
-  code dependency, which is a deliberate go/no-go decision we haven't made,
-  not an oversight.
-- **No "region" field on a site** — the benchmarking view can group sites
-  by system size or inverter brand for real; a "region" grouping uses
-  "cohort" (project grouping) as a stand-in, since there's no dedicated
-  region/state field on a site yet.
-- **The emissions (CO₂) numbers don't work until someone sets the
-  official grid emission factor** — this is deliberate, not a bug: that
-  number has to be a real, client-confirmed figure (the concept note says
-  so explicitly), so the system refuses to guess one. An operator has to
-  explicitly configure it once before any CO₂ figure will compute.
-- **The day/night check is deliberately coarse** — it assumes night is
-  8pm–5am local time rather than calculating actual sunrise/sunset, so it
-  can misjudge by up to an hour around dawn/dusk. It only ever flags,
-  never rejects, so this is a safe simplification, not a real gap.
-- **The fleet health view (Phase 2) still scans recent raw data** rather
-  than using the new daily-summary shortcut Phase 3 built for KPIs — a
-  known follow-up, not a regression.
+  need an irradiance data source beyond the current-conditions weather
+  widget, which shows live weather but isn't fed into either calculation.
+- **No PDF reports** — CSV/async export works; PDF would be a new
+  dependency, a deliberate go/no-go decision not yet made.
+- **No push notifications / alerting to a person** — anomalies and
+  low-coverage warnings are visible in-dashboard; nobody gets pinged yet.
+- **No general "edit a site" form** — beyond the new country-correction
+  control on Site Detail, a site's other fields (name, address, system
+  size, etc.) can't be edited after creation yet.
+- **The day/night check is deliberately coarse** — assumes night is
+  8pm–5am local time rather than real sunrise/sunset; only ever flags,
+  never rejects.
+- **Mutual TLS on the MQTT broker isn't enabled** — devices authenticate
+  with username/password today, not a client certificate.
+- **DNS/production cutover isn't finished** — see section 9.
 
-## 7. A suggested live demo script
+## 12. A suggested live demo script
 
-This mirrors exactly what was tested and verified — nothing below is
-hypothetical, all of it has been run successfully:
+**API-level (unchanged from earlier phases, still accurate):**
+1. Log in as an operator via `POST /v1/auth/login` — show the token comes
+   back with a role.
+2. Register a site and device — point out the device secret shown once.
+3. Publish a normal reading, then an oversized one (rejected, but
+   audited), then a lower-energy one simulating a reboot (flagged, not
+   rejected, and the day's energy total is still correct).
+4. Pull fleet health as operator, then the same call as a restricted user
+   — show the 403.
+5. Try the CO₂ endpoint before configuring a factor (409, explained), set
+   one, show it succeed with the exact factor cited.
+6. Revoke a device, show its next message still gets audited but rejected.
 
-1. **Log in as an operator.** Show the token comes back with a role.
-2. **Register a new site and device.** Point out the device secret is
-   shown once — this is what would get flashed on-screen in a real "add
-   device" flow, then never shown again.
-3. **Publish a normal reading** (via a simulated device) and show it
-   landing in the site's telemetry feed within seconds.
-4. **Publish an oversized reading** (e.g. 10kW on a 2kW site) — show it
-   gets rejected, and show the audit trail proving it wasn't silently lost,
-   just refused.
-5. **Publish a reading with a lower energy count than before** (simulating
-   an inverter reboot) — show it's accepted, not rejected, but flagged —
-   and then show the site's energy total for that day is still correct
-   despite the reset.
-6. **Check a device's status** — show `online` / `data_gap` and explain
-   the difference live using the "offline vs. behind" framing above.
-7. **Pull up fleet health** as the operator — show fleet-wide + per-site
-   numbers. Then try the same call as a restricted-role user and show the
-   403 — this is the access-control story in one screen.
-8. **Pull up a site's energy, specific yield, and peak output** — this is
-   the "what does the client actually see" moment.
-9. **Try the CO₂ endpoint before configuring a factor** — show the 409,
-   explain why (no invented numbers), then set a factor and show it
-   succeed with the exact factor cited in the response.
-10. **Compare a site to the fleet average** and pull up the benchmark view
-    segmented by system size — the "how do I stack up" story.
-11. **Export a CSV** — the "give me a spreadsheet" moment.
-12. **Revoke a device** and show its next message gets audited but
-    rejected — proving revocation actually stops data, not just hides it
-    in the UI.
+**Now also walk through the actual dashboard, since it exists:**
+7. Open the login page — explain there's no sign-up button and why
+   (section 6), log in as the seeded operator.
+8. Fleet Dashboard — point out every number is real, including the
+   weather widget and environmental-impact panel; explain what a "Not
+   tracked" field means and why it's not filled with a fake number.
+9. Add a site — search an address on the map, show country and timezone
+   auto-fill from the pick, save it.
+10. Site Detail — correct a site's country inline, explain why (the
+    country column was backfilled to a guess for pre-existing sites).
+11. Fleet Analytics with a fleet spanning more than one country — show the
+    per-country emissions breakdown, and what "unconfigured" looks like
+    for a country with no factor set yet.
+12. Invite a user from the Invite User page — this is the only way any
+    account after the first gets created.
+13. Visit the footer's Privacy Policy / Terms / Security links — show
+    they're real pages now, not dead links.
 
-## 8. Quick glossary
+## 13. Quick glossary
 
 - **Telemetry** — the actual reading data (power, energy, timestamp, status).
-- **Mosquitto / MQTT** — the message-delivery system devices use to send
-  telemetry; not solar-specific, just a reliable postal service for small
-  devices.
-- **Ingestor** — our service that receives, checks, and stores telemetry.
-- **Provenance** — how a reading was obtained: `metered` (live), `backfilled`
-  (arrived late from a buffered outage), `estimated` (not used yet — reserved
-  for a future gap-filling feature).
-- **Quality flag** — a note on an accepted reading that something about it
-  is worth a second look (e.g. an energy counter reset).
-- **JWT** — the login token a user carries after signing in; proves who
-  they are and what role they have on every request.
-- **Operator / restricted** — the two account types; restricted is locked
-  to one site, enforced on the server every time, not just hidden in a UI.
-- **Continuous aggregate / rollup** — the "summarizer" from section 2: a
-  pre-computed daily total per device, kept automatically up to date, so
-  KPI queries stay fast as the amount of data grows.
-- **Specific yield** — energy generated divided by a site's rated size
-  (kWh per kWp) — lets you compare a small and large site fairly.
+- **Mosquitto / MQTT** — the message-delivery system devices use.
+- **Ingestor** — receives, checks, and stores telemetry.
+- **Provenance** — how a reading was obtained: `metered` (live),
+  `backfilled` (arrived late from a buffered outage).
+- **Quality flag** — a note on an accepted reading worth a second look.
+- **JWT** — the login token proving who a user is and their role.
+- **Operator / restricted** — the two account types.
+- **Continuous aggregate / rollup** — pre-computed daily totals, kept
+  automatically up to date.
+- **Specific yield** — energy generated ÷ a site's rated size (kWh/kWp).
 - **Capacity factor** — actual output vs. a flat theoretical maximum; not
-  the same as Performance Ratio (see section 4).
-- **Cohort** — a named group of sites (e.g. a project or region grouping)
-  that can be reported on together.
-- **Emission factor** — the "how many kg of CO₂ does one kWh from the grid
-  represent" number, used to compute avoided emissions; must be explicitly
-  set by an operator, never assumed.
+  Performance Ratio.
+- **Cohort** — a named group of sites reported on together.
+- **Emission factor** — kg CO₂ per kWh from a given country's grid; now
+  resolved per-site, never one global assumption (section 6a).
+- **R2** — Cloudflare's S3-compatible object storage, used for export
+  files.
+- **NDPA / UK GDPR** — Nigeria's Data Protection Act 2023 and the UK's
+  data protection regime; both apply since the business operates in both
+  countries (section 10).

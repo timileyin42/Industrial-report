@@ -12,6 +12,14 @@ import (
 	"github.com/timileyin42/zgnis-solar/internal/registry"
 )
 
+func (h *handlers) ingestionStatus(c echo.Context) error {
+	lastReceivedAt, err := h.deps.IngestionAudit.LastReceivedAt(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{"last_received_at": lastReceivedAt})
+}
+
 type ingestionAuditEntryResponse struct {
 	ID         int64          `json:"id"`
 	DeviceID   string         `json:"device_id"`

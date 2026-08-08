@@ -17,8 +17,10 @@ CREATE TABLE sites (
     install_date        date,
     timezone            text NOT NULL DEFAULT 'UTC', -- see migrations/0009_delocalize_defaults.sql
     country             text NOT NULL, -- see migrations/0010_site_country.sql — no default, must be set explicitly
+    is_primary          boolean NOT NULL DEFAULT false, -- see migrations/0011_primary_site.sql
     created_at          timestamptz NOT NULL DEFAULT now()
 );
+CREATE UNIQUE INDEX idx_sites_one_primary ON sites (is_primary) WHERE is_primary = true;
 
 CREATE TABLE devices (
     device_id              text PRIMARY KEY,

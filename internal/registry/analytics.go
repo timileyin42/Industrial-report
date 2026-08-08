@@ -3,12 +3,14 @@ package registry
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/timileyin42/zgnis-solar/internal/db"
 	"github.com/timileyin42/zgnis-solar/internal/domain"
+	"github.com/timileyin42/zgnis-solar/internal/weather"
 )
 
 type Analytics struct {
@@ -351,6 +353,241 @@ func (a *Analytics) SiteSpecificYield(ctx context.Context, siteID, period string
 		})
 	}
 	return points, nil
+}
+
+// FleetSpecificYield is SiteSpecificYield's fleet-wide sibling —
+// normalizes fleet-wide (or cohort-wide) energy against total installed
+// capacity across those sites, not one site's. This is a capacity-
+// weighted aggregate (sum energy / sum capacity), not an average of each
+// site's own specific yield — the correct way to combine sites of very
+// different sizes into one fleet-level number.
+func (a *Analytics) FleetSpecificYield(ctx context.Context, cohortID *string, period string, from, to time.Time) ([]YieldPoint, error) {
+	capacityRaw, err := a.q.FleetCapacityForCohort(ctx, textOrNull(cohortID))
+	if err != nil {
+		return nil, err
+	}
+	systemSizeKW := numericToFloat(capacityRaw)
+	if systemSizeKW == nil || *systemSizeKW <= 0 {
+		return nil, ErrNoSystemSize
+	}
+
+	series, err := a.FleetEnergy(ctx, cohortID, period, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	points := make([]YieldPoint, 0, len(series.Points))
+	for _, p := range series.Points {
+		points = append(points, YieldPoint{
+			PeriodStart:            p.PeriodStart,
+			EnergyKWh:              p.EnergyKWh,
+			SystemSizeKW:           *systemSizeKW,
+			SpecificYieldKWhPerKWp: p.EnergyKWh / *systemSizeKW,
+		})
+	}
+	return points, nil
+}
+
+// ErrNoLocation means a site has no gps_lat/gps_lng set — Performance
+// Ratio needs a location to fetch that site's actual historical
+// irradiance from; there's no reasonable default to fall back to.
+var ErrNoLocation = errors.New("site has no gps_lat/gps_lng configured")
+
+type PerformanceRatioPoint struct {
+	PeriodStart         time.Time
+	EnergyKWh           float64
+	ExpectedEnergyKWh   float64
+	PerformanceRatioPct float64
+}
+
+// SitePerformanceRatio is the real, weather-adjusted metric Capacity
+// Factor deliberately isn't (see SiteCapacityFactor's own comment): it
+// compares actual output against what the site should have produced
+// given the sunlight it actually received, using historical irradiance
+// from internal/weather. Returns ErrNoLocation if the site has no saved
+// coordinates, ErrNoSystemSize if it has no rated capacity — neither
+// resolves by waiting for more data, unlike an empty series.
+func (a *Analytics) SitePerformanceRatio(ctx context.Context, siteID, period string, from, to time.Time) ([]PerformanceRatioPoint, error) {
+	site, err := a.q.GetSite(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	systemSizeKW := numericToFloat(site.SystemSizeKw)
+	if systemSizeKW == nil || *systemSizeKW <= 0 {
+		return nil, ErrNoSystemSize
+	}
+	if !site.GpsLat.Valid || !site.GpsLng.Valid {
+		return nil, ErrNoLocation
+	}
+
+	dailyEnergy, err := a.SiteEnergy(ctx, siteID, "daily", from, to)
+	if err != nil {
+		return nil, err
+	}
+	if len(dailyEnergy.Points) == 0 {
+		return nil, nil
+	}
+
+	hours, err := weather.FetchHistoricalIrradiance(ctx, site.GpsLat.Float64, site.GpsLng.Float64, from, to)
+	if err != nil {
+		return nil, err
+	}
+	irradianceByDay := weather.DailyTotalsKWhPerM2(hours)
+
+	return bucketPerformanceRatio(dailyEnergy.Points, irradianceByDay, *systemSizeKW, period), nil
+}
+
+// bucketPerformanceRatio sums actual and expected energy separately per
+// period bucket before dividing — never averages daily ratios directly,
+// so a week containing one unusually sunny/cloudy day isn't skewed by
+// that single day counting as much as any other.
+func bucketPerformanceRatio(dailyPoints []EnergyPoint, irradianceByDay map[string]float64, systemSizeKW float64, period string) []PerformanceRatioPoint {
+	byBucket := map[time.Time]*PerformanceRatioPoint{}
+	var order []time.Time
+	for _, p := range dailyPoints {
+		irradiance, ok := irradianceByDay[p.PeriodStart.Format("2006-01-02")]
+		if !ok || irradiance <= 0 {
+			// No irradiance data for this day (e.g. archive lag for a
+			// very recent day) — excluded, never fabricated as 0 expected
+			// output, which would make PR divide-by-zero or look infinite.
+			continue
+		}
+
+		bucket := PeriodBucket(p.PeriodStart, period)
+		pt, ok := byBucket[bucket]
+		if !ok {
+			pt = &PerformanceRatioPoint{PeriodStart: bucket}
+			byBucket[bucket] = pt
+			order = append(order, bucket)
+		}
+		pt.EnergyKWh += p.EnergyKWh
+		pt.ExpectedEnergyKWh += irradiance * systemSizeKW
+	}
+
+	points := make([]PerformanceRatioPoint, 0, len(order))
+	for _, b := range order {
+		pt := *byBucket[b]
+		if pt.ExpectedEnergyKWh > 0 {
+			pt.PerformanceRatioPct = pt.EnergyKWh / pt.ExpectedEnergyKWh * 100
+		}
+		points = append(points, pt)
+	}
+	sort.Slice(points, func(i, j int) bool { return points[i].PeriodStart.Before(points[j].PeriodStart) })
+	return points
+}
+
+// FleetPerformanceRatio combines every site's own Performance Ratio
+// (each fetched against its own coordinates) into one fleet-wide series,
+// summing actual/expected energy across sites per period before
+// dividing — the same capacity-and-irradiance-weighted aggregation
+// FleetSpecificYield uses, just per-site rather than one pooled query,
+// since irradiance is external data keyed by each site's own location.
+// Sites missing a location or system size are silently excluded from the
+// total (never guessed) rather than failing the whole call — mirrors how
+// FleetEmissions handles a country with no configured factor.
+func (a *Analytics) FleetPerformanceRatio(ctx context.Context, cohortID *string, period string, from, to time.Time) ([]PerformanceRatioPoint, error) {
+	sites, err := a.q.ListSiteLocations(ctx, textOrNull(cohortID))
+	if err != nil {
+		return nil, err
+	}
+
+	merged := map[time.Time]*PerformanceRatioPoint{}
+	var order []time.Time
+	usableSites := 0
+	for _, s := range sites {
+		systemSizeKW := numericToFloat(s.SystemSizeKw)
+		if systemSizeKW == nil || *systemSizeKW <= 0 || !s.GpsLat.Valid || !s.GpsLng.Valid {
+			continue
+		}
+		usableSites++
+
+		points, err := a.SitePerformanceRatio(ctx, s.SiteID, period, from, to)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range points {
+			pt, ok := merged[p.PeriodStart]
+			if !ok {
+				pt = &PerformanceRatioPoint{PeriodStart: p.PeriodStart}
+				merged[p.PeriodStart] = pt
+				order = append(order, p.PeriodStart)
+			}
+			pt.EnergyKWh += p.EnergyKWh
+			pt.ExpectedEnergyKWh += p.ExpectedEnergyKWh
+		}
+	}
+	if usableSites == 0 {
+		return nil, ErrNoLocation
+	}
+
+	points := make([]PerformanceRatioPoint, 0, len(order))
+	for _, b := range order {
+		pt := *merged[b]
+		if pt.ExpectedEnergyKWh > 0 {
+			pt.PerformanceRatioPct = pt.EnergyKWh / pt.ExpectedEnergyKWh * 100
+		}
+		points = append(points, pt)
+	}
+	sort.Slice(points, func(i, j int) bool { return points[i].PeriodStart.Before(points[j].PeriodStart) })
+	return points, nil
+}
+
+type TopSite struct {
+	SiteID                 string
+	Name                   *string
+	EnergyKWh              float64
+	SystemSizeKW           *float64
+	SpecificYieldKWhPerKWp float64
+}
+
+// TopSitesToday ranks every site by today's (UTC) generation so far,
+// descending, capped at limit. Iterates every site's own reset-aware
+// SiteEnergy computation rather than a raw SUM — same reasoning as
+// FleetAnomalies iterating per-site: pilot-fleet scale today, a genuine
+// per-site external/pipeline-bound computation, not something one SQL
+// query could safely shortcut without losing the reset-day correctness
+// SiteEnergy already handles.
+func (a *Analytics) TopSitesToday(ctx context.Context, limit int) ([]TopSite, error) {
+	sites, err := a.q.ListSitesForAnalytics(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	results := make([]TopSite, 0, len(sites))
+	for _, s := range sites {
+		energy, err := a.SiteEnergy(ctx, s.SiteID, "daily", todayStart, now)
+		if err != nil {
+			return nil, err
+		}
+		var kwh float64
+		if len(energy.Points) > 0 {
+			kwh = energy.Points[len(energy.Points)-1].EnergyKWh
+		}
+
+		systemSizeKW := numericToFloat(s.SystemSizeKw)
+		var yieldKWhPerKWp float64
+		if systemSizeKW != nil && *systemSizeKW > 0 {
+			yieldKWhPerKWp = kwh / *systemSizeKW
+		}
+
+		var name *string
+		if s.Name.Valid {
+			name = &s.Name.String
+		}
+		results = append(results, TopSite{
+			SiteID: s.SiteID, Name: name, EnergyKWh: kwh,
+			SystemSizeKW: systemSizeKW, SpecificYieldKWhPerKWp: yieldKWhPerKWp,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool { return results[i].EnergyKWh > results[j].EnergyKWh })
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
 }
 
 type PeakPoint struct {

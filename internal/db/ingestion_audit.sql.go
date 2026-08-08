@@ -11,6 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const lastIngestionReceivedAt = `-- name: LastIngestionReceivedAt :one
+SELECT max(received_at)::timestamptz AS last_received_at FROM ingestion_audit_log
+`
+
+// Most recent message the ingestor has seen, fleet-wide, regardless of
+// whether it passed validation — the Dashboard's ingestion-pipeline
+// status widget uses "how long ago was that" as its health signal, not
+// a synthetic uptime percentage this platform has no way to compute.
+func (q *Queries) LastIngestionReceivedAt(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lastIngestionReceivedAt)
+	var last_received_at pgtype.Timestamptz
+	err := row.Scan(&last_received_at)
+	return last_received_at, err
+}
+
 const listIngestionAuditLog = `-- name: ListIngestionAuditLog :many
 SELECT
     l.id, l.device_id, d.site_id, l.raw_payload, l.received_at, l.processed, l.error

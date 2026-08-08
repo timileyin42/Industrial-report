@@ -90,8 +90,65 @@ func (s *Sites) UpdateCountry(ctx context.Context, actorUserID int64, siteID, co
 	return site, nil
 }
 
+// SetPrimary marks siteID as the fleet's one primary/home site, clearing
+// the flag from whichever site (if any) held it before. This is what the
+// Fleet Dashboard's weather widget resolves its location from — an
+// explicit choice, never an implicit "whatever site was created most
+// recently" guess (see FleetDashboardPage.tsx / WeatherWidget wiring).
+// Two sequential statements rather than one transaction: the unique
+// partial index on sites.is_primary (migrations/0011_primary_site.sql)
+// is what actually guarantees at most one primary site, even under a
+// race, and this action is infrequent/admin-only, not a hot path worth
+// adding transaction plumbing for.
+func (s *Sites) SetPrimary(ctx context.Context, actorUserID int64, siteID string) (db.Site, error) {
+	if err := s.q.UnsetAllPrimarySites(ctx); err != nil {
+		return db.Site{}, err
+	}
+	site, err := s.q.SetSitePrimary(ctx, siteID)
+	if err != nil {
+		return db.Site{}, err
+	}
+	recordAction(ctx, s.q, actorUserID, "site.set_primary", "site", site.SiteID, nil)
+	return site, nil
+}
+
+// PrimarySite returns the fleet's current primary site, or
+// pgx.ErrNoRows if none has ever been set — callers (the Fleet Dashboard
+// API) must treat that as "no default configured yet," never silently
+// fall back to picking any site.
+func (s *Sites) PrimarySite(ctx context.Context) (db.Site, error) {
+	return s.q.GetPrimarySite(ctx)
+}
+
 func (s *Sites) Get(ctx context.Context, siteID string) (db.Site, error) {
 	return s.q.GetSite(ctx, siteID)
+}
+
+type Cohort struct {
+	CohortID        string
+	SiteCount       int64
+	TotalCapacityKW float64
+}
+
+// ListCohorts derives the fleet's cohorts from what's actually assigned
+// on sites — there's no dedicated cohorts table, so a cohort with zero
+// sites simply doesn't exist as a listable entity, which is the correct
+// behavior for a free-text grouping field rather than a managed one.
+func (s *Sites) ListCohorts(ctx context.Context) ([]Cohort, error) {
+	rows, err := s.q.ListCohorts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Cohort, 0, len(rows))
+	for _, r := range rows {
+		capacity := numericToFloat(r.TotalCapacityKw)
+		var capacityVal float64
+		if capacity != nil {
+			capacityVal = *capacity
+		}
+		out = append(out, Cohort{CohortID: r.CohortID.String, SiteCount: r.SiteCount, TotalCapacityKW: capacityVal})
+	}
+	return out, nil
 }
 
 // List returns a page of sites plus the cursor for the next page (empty

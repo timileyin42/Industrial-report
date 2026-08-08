@@ -165,6 +165,16 @@ func (f *Fleet) Health(ctx context.Context, cursorToken string, limit int) (Flee
 	}, nil
 }
 
+// CurrentGeneration is a live "how much power right now" figure — the
+// most recent reading from every currently-online device, summed. This
+// is intentionally NOT a rollup; it reflects this exact moment, unlike
+// every other energy figure on this platform (which is historical/
+// cumulative by design).
+func (f *Fleet) CurrentGeneration(ctx context.Context) (float64, error) {
+	cutoff := time.Now().UTC().Add(-f.onlineThreshold)
+	return f.devices.q.CurrentFleetGeneration(ctx, pgtype.Timestamptz{Time: cutoff, Valid: true})
+}
+
 func coveragePct(actual int64, expected float64) float64 {
 	if expected <= 0 {
 		return 0
