@@ -40,3 +40,9 @@ loadtest-devices.csv
 # only optimized/compressed derivatives that actually ship get added
 # under web/src/assets once built into the app.
 raw-assets/
+
+# Local-only sample telemetry for testing the dashboard against real-shaped
+# data without a live MQTT connection — TEST- prefixed on purpose, never
+# meant to land in a real client's view. Keep out of git so it never
+# accidentally ships; see test-data/README.md for how to (re)generate/use it.
+test-data/
