@@ -48,7 +48,7 @@ export function ExportMenuButton({ label, options }: { label: string; options: E
         <ChevronDown size={14} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 min-w-[160px] glass-card rounded-xl overflow-hidden z-50">
+        <div className="absolute right-0 top-full mt-2 min-w-[160px] max-w-[90vw] overlay-panel rounded-xl overflow-hidden z-50">
           {options.map((opt) => (
             <button
               key={opt.label}

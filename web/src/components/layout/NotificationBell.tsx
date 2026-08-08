@@ -87,7 +87,7 @@ export function NotificationBell() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 glass-card rounded-xl overflow-hidden z-50">
+        <div className="fixed inset-x-4 top-20 md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-80 overlay-panel rounded-xl overflow-hidden z-50">
           <div className="px-4 py-3 border-b border-outline-variant/60">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Alerts</span>
           </div>

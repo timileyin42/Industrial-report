@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import type { ComponentType } from "react";
 import {
@@ -20,6 +21,8 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
+  Menu,
+  X,
 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { LogoMark } from "../brand/Logo";
@@ -74,6 +77,68 @@ function IngestionStatusWidget({ collapsed }: { collapsed: boolean }) {
   );
 }
 
+interface NavEntry {
+  to: string;
+  icon: ComponentType<{ size?: number }>;
+  label: string;
+  end?: boolean;
+  operatorOnly?: boolean;
+}
+
+interface NavSection {
+  label: string | null; // null = ungrouped (Main section, no header)
+  items: NavEntry[];
+  operatorOnly?: boolean; // whole section gated, not just individual items
+}
+
+// Single source of truth for every nav destination — both the desktop
+// Sidebar and the mobile "More" drawer render from this, so the two can
+// never drift apart the way two hand-duplicated lists would.
+const NAV_SECTIONS: NavSection[] = [
+  {
+    label: "Main",
+    items: [
+      { to: "/app", icon: Grid2x2, label: "Dashboard", end: true, operatorOnly: true },
+      { to: "/app/sites", icon: MapPin, label: "Sites" },
+      { to: "/app/devices", icon: Radio, label: "Devices" },
+      { to: "/app/map", icon: Map, label: "Map View", operatorOnly: true },
+      { to: "/app/alerts", icon: Bell, label: "Alerts", operatorOnly: true },
+    ],
+  },
+  {
+    label: "Analytics",
+    operatorOnly: true,
+    items: [
+      { to: "/app/analytics/performance", icon: Gauge, label: "Performance" },
+      { to: "/app/analytics/energy", icon: Zap, label: "Energy" },
+      { to: "/app/analytics/emissions", icon: Leaf, label: "Emissions" },
+      { to: "/app/reports", icon: FileBarChart, label: "Reports" },
+    ],
+  },
+  {
+    label: "Management",
+    operatorOnly: true,
+    items: [
+      { to: "/app/cohorts", icon: Layers, label: "Cohorts / Projects" },
+      { to: "/app/users", icon: Users, label: "Users & Roles" },
+      { to: "/app/devices/new", icon: Radio, label: "Device Registry" },
+    ],
+  },
+  {
+    label: "System",
+    operatorOnly: true,
+    items: [
+      { to: "/app/fleet-health", icon: HeartPulse, label: "Fleet Health" },
+      { to: "/app/settings", icon: Settings, label: "Settings" },
+      { to: "/app/audit", icon: ScrollText, label: "Audit Log" },
+    ],
+  },
+  {
+    label: null,
+    items: [{ to: "/app/ingestion-log", icon: FileClock, label: "Ingestion Log" }],
+  },
+];
+
 // Pill-highlighted nav items per the light/glass redesign — no more
 // left/right border accent, a soft rounded background instead. Centered,
 // icon-only (no gap needed) when the sidebar is collapsed.
@@ -93,15 +158,17 @@ function NavItem({
   label,
   collapsed,
   end,
+  onClick,
 }: {
   to: string;
   icon: ComponentType<{ size?: number }>;
   label: string;
   collapsed: boolean;
   end?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <NavLink to={to} end={end} className={navItemClass(collapsed)} title={collapsed ? label : undefined}>
+    <NavLink to={to} end={end} onClick={onClick} className={navItemClass(collapsed)} title={collapsed ? label : undefined}>
       <Icon size={18} />
       {!collapsed && <span>{label}</span>}
     </NavLink>
@@ -109,6 +176,22 @@ function NavItem({
 }
 
 const sectionLabelClass = "px-4 pt-5 pb-1.5 font-label-caps text-label-caps text-on-surface-variant/70 uppercase tracking-widest";
+
+function renderSections(isOperator: boolean, collapsed: boolean, onNavigate?: () => void) {
+  return NAV_SECTIONS.map((section) => {
+    if (section.operatorOnly && !isOperator) return null;
+    const items = section.items.filter((item) => isOperator || !item.operatorOnly);
+    if (items.length === 0) return null;
+    return (
+      <div key={section.label ?? "ungrouped"}>
+        {section.label && !collapsed && <p className={sectionLabelClass}>{section.label}</p>}
+        {items.map((item) => (
+          <NavItem key={item.to} {...item} collapsed={collapsed} onClick={onNavigate} />
+        ))}
+      </div>
+    );
+  });
+}
 
 // Grouped into Main/Analytics/Management/System sections — structure
 // only, not a copied visual system: still the light/glass tokens/
@@ -124,8 +207,12 @@ const sectionLabelClass = "px-4 pt-5 pb-1.5 font-label-caps text-label-caps text
 //
 // Responsive per DESIGN.md's documented breakpoint (mobile < 768px: "side
 // nav collapses to a bottom bar"). Below md, this component renders
-// nothing; MobileNav (same file) renders the bottom bar instead, used
-// together in AppLayout.
+// nothing; MobileNav (same file) renders the bottom bar + "More" drawer
+// instead, used together in AppLayout. The drawer covers every item this
+// component does (via the shared NAV_SECTIONS above) — the bottom bar
+// alone only fits 4 destinations, which used to mean everything else
+// (Reports, Users, Settings, Audit Log, ...) was simply unreachable on a
+// phone.
 export function Sidebar() {
   const { session, logout } = useAuth();
   const { collapsed, toggle } = useSidebar();
@@ -155,33 +242,7 @@ export function Sidebar() {
         </button>
       </div>
       <nav className={`flex-1 space-y-0.5 overflow-y-auto ${collapsed ? "px-2" : "px-3"}`}>
-        {!collapsed && <p className={sectionLabelClass}>Main</p>}
-        {isOperator && <NavItem to="/app" icon={Grid2x2} label="Dashboard" collapsed={collapsed} end />}
-        <NavItem to="/app/sites" icon={MapPin} label="Sites" collapsed={collapsed} />
-        <NavItem to="/app/devices" icon={Radio} label="Devices" collapsed={collapsed} />
-        {isOperator && <NavItem to="/app/map" icon={Map} label="Map View" collapsed={collapsed} />}
-        {isOperator && <NavItem to="/app/alerts" icon={Bell} label="Alerts" collapsed={collapsed} />}
-
-        {isOperator && (
-          <>
-            {!collapsed && <p className={sectionLabelClass}>Analytics</p>}
-            <NavItem to="/app/analytics/performance" icon={Gauge} label="Performance" collapsed={collapsed} />
-            <NavItem to="/app/analytics/energy" icon={Zap} label="Energy" collapsed={collapsed} />
-            <NavItem to="/app/analytics/emissions" icon={Leaf} label="Emissions" collapsed={collapsed} />
-            <NavItem to="/app/reports" icon={FileBarChart} label="Reports" collapsed={collapsed} />
-
-            {!collapsed && <p className={sectionLabelClass}>Management</p>}
-            <NavItem to="/app/cohorts" icon={Layers} label="Cohorts / Projects" collapsed={collapsed} />
-            <NavItem to="/app/users" icon={Users} label="Users & Roles" collapsed={collapsed} />
-            <NavItem to="/app/devices/new" icon={Radio} label="Device Registry" collapsed={collapsed} />
-
-            {!collapsed && <p className={sectionLabelClass}>System</p>}
-            <NavItem to="/app/fleet-health" icon={HeartPulse} label="Fleet Health" collapsed={collapsed} />
-            <NavItem to="/app/settings" icon={Settings} label="Settings" collapsed={collapsed} />
-            <NavItem to="/app/audit" icon={ScrollText} label="Audit Log" collapsed={collapsed} />
-          </>
-        )}
-        <NavItem to="/app/ingestion-log" icon={FileClock} label="Ingestion Log" collapsed={collapsed} />
+        {renderSections(isOperator, collapsed)}
       </nav>
       {isOperator && <IngestionStatusWidget collapsed={collapsed} />}
       <div className={`pt-4 border-t border-outline-variant ${collapsed ? "px-2" : "px-3"}`}>
@@ -206,36 +267,70 @@ const mobileNavItemClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-primary-container text-on-primary-container" : "text-on-surface-variant",
   ].join(" ");
 
-// Bottom tab bar — reference: design/fleet_overview_zgnis_mobile/code.html's
-// bottom nav pattern, adapted to this app's actual 4 sections (Fleet/
-// Sites/Devices/Alerts) rather than that mockup's own Home/Alerts/
-// Profile — there's still no profile page, but Alerts is real now.
+// Bottom tab bar (4 most common destinations) + a "More" button opening
+// a full-height drawer with every other nav item (see NAV_SECTIONS) —
+// reference: design/fleet_overview_zgnis_mobile/code.html's bottom nav
+// pattern for the 4-item bar itself, extended here since that mockup
+// never accounted for the other ~10 destinations this app actually has.
 export function MobileNav() {
-  const { session } = useAuth();
+  const { session, logout } = useAuth();
   const isOperator = session?.role === "operator";
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 flex justify-around items-center h-16 px-density-base glass-card rounded-2xl">
-      {isOperator && (
-        <NavLink to="/app" className={mobileNavItemClass} end>
-          <Grid2x2 size={20} />
-          <span>Fleet</span>
+    <>
+      <nav className="md:hidden fixed bottom-3 left-3 right-3 z-50 flex justify-around items-center h-16 px-density-base glass-card rounded-2xl">
+        {isOperator && (
+          <NavLink to="/app" className={mobileNavItemClass} end>
+            <Grid2x2 size={20} />
+            <span>Fleet</span>
+          </NavLink>
+        )}
+        <NavLink to="/app/sites" className={mobileNavItemClass}>
+          <MapPin size={20} />
+          <span>Sites</span>
         </NavLink>
-      )}
-      <NavLink to="/app/sites" className={mobileNavItemClass}>
-        <MapPin size={20} />
-        <span>Sites</span>
-      </NavLink>
-      <NavLink to="/app/devices" className={mobileNavItemClass}>
-        <Radio size={20} />
-        <span>Devices</span>
-      </NavLink>
-      {isOperator && (
-        <NavLink to="/app/alerts" className={mobileNavItemClass}>
-          <Bell size={20} />
-          <span>Alerts</span>
+        <NavLink to="/app/devices" className={mobileNavItemClass}>
+          <Radio size={20} />
+          <span>Devices</span>
         </NavLink>
+        {isOperator && (
+          <NavLink to="/app/alerts" className={mobileNavItemClass}>
+            <Bell size={20} />
+            <span>Alerts</span>
+          </NavLink>
+        )}
+        <button onClick={() => setMenuOpen(true)} className={mobileNavItemClass({ isActive: false })}>
+          <Menu size={20} />
+          <span>More</span>
+        </button>
+      </nav>
+
+      {menuOpen && (
+        <div className="md:hidden fixed inset-0 z-[70] bg-black/40" onClick={() => setMenuOpen(false)}>
+          <div
+            className="absolute right-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-background overflow-y-auto p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4 px-2">
+              <span className="font-headline-md text-headline-md font-bold text-on-surface">Menu</span>
+              <button onClick={() => setMenuOpen(false)} className="text-on-surface-variant hover:text-on-surface p-1" title="Close menu">
+                <X size={22} />
+              </button>
+            </div>
+            <nav className="space-y-0.5 px-1">{renderSections(isOperator, false, () => setMenuOpen(false))}</nav>
+            <div className="pt-4 mt-4 border-t border-outline-variant px-1">
+              <button
+                onClick={logout}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-full text-on-surface-variant hover:bg-surface-dim hover:text-on-surface transition-colors font-body-base"
+              >
+                <LogOut size={20} />
+                <span>Logout</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </nav>
+    </>
   );
 }

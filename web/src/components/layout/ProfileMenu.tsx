@@ -39,7 +39,7 @@ export function ProfileMenu() {
         <ChevronDown size={14} className={`text-on-surface-variant transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-56 glass-card rounded-xl overflow-hidden z-50">
+        <div className="absolute right-0 top-full mt-2 w-56 max-w-[90vw] overlay-panel rounded-xl overflow-hidden z-50">
           {session?.email && (
             <div className="px-4 py-3 border-b border-outline-variant/60">
               <p className="text-[13px] text-on-surface truncate">{session.email}</p>

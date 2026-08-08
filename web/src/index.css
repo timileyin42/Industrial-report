@@ -164,3 +164,17 @@ body {
   border: 1px solid rgb(255 255 255 / 0.6);
   box-shadow: var(--shadow-glass);
 }
+
+/* For floating overlay panels (dropdown menus) rather than background
+   cards — .glass-card's 0.72 opacity is fine sitting on the page's own
+   gradient background, but a dropdown sits ON TOP of other real content
+   (page text, cards), and 72% opacity + blur isn't enough to keep that
+   content from visibly bleeding through underneath the dropdown's own
+   text, especially on a phone screen where the two sit close together. */
+.overlay-panel {
+  background-color: rgb(255 255 255 / 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgb(255 255 255 / 0.6);
+  box-shadow: var(--shadow-glass);
+}
