@@ -27,7 +27,7 @@ export function ProfileMenu() {
         onClick={() => setOpen((v) => !v)}
         className="glass-card rounded-full flex items-center gap-3 pl-4 pr-2 py-2"
       >
-        <div className="text-right">
+        <div className="text-right hidden lg:block">
           <p className="font-label-caps text-label-caps text-on-surface leading-none">
             {session?.role === "operator" ? "Operator" : `Site: ${session?.siteId ?? ""}`}
           </p>

@@ -197,7 +197,7 @@ export function FleetDashboardPage() {
             Your solar fleet {data && data.total_devices - data.online_devices === 0 ? "is performing well" : "needs a look"}
           </h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <WeatherWidget
             lat={primarySiteHasLocation ? primarySite?.gps_lat : undefined}
             lng={primarySiteHasLocation ? primarySite?.gps_lng : undefined}
