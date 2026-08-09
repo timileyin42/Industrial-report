@@ -178,3 +178,17 @@ body {
   border: 1px solid rgb(255 255 255 / 0.6);
   box-shadow: var(--shadow-glass);
 }
+
+/* The marketing nav is deliberately transparent at the very top of the
+   page (it sits directly over the hero video on Home) — but once you
+   scroll past the hero, that same transparent bar sits over ordinary
+   page content (text, cards, illustrations) with nothing behind it to
+   separate the two, so content visibly shows through/overlaps the nav's
+   own logo/links. Applied once scrollY passes a small threshold. */
+.landing-nav-scrolled {
+  background-color: rgb(255 255 255 / 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgb(0 0 0 / 0.06);
+  box-shadow: 0 1px 12px rgb(0 0 0 / 0.05);
+}

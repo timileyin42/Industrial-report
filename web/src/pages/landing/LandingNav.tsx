@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { Logo } from "../../components/brand/Logo";
@@ -20,18 +20,30 @@ const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
 // wordmark on Features/Solutions/Company); unified here rather than
 // carrying that inconsistency into the built site.
 //
-// Deliberately no background/blur/border on the bar itself: on Home it
-// sits directly over the hero video (the whole point — video fills the
-// page edge-to-edge, nav floats over it), and on Features/Solutions/
-// Company it sits over the same light page background everything else
-// uses, so dark text stays legible there too without a bar of its own.
-// A drop-shadow stands in for a background as the legibility safety net
-// against brighter video frames.
+// Transparent at the very top of the page on purpose: on Home it sits
+// directly over the hero video (the whole point — video fills the page
+// edge-to-edge, nav floats over it). But past the hero, this same fixed
+// bar sits over ordinary scrolling content (text, cards, illustrations)
+// with no background of its own — that content visibly shows through
+// behind the logo/links, which reads as broken rather than intentional.
+// landing-nav-scrolled (index.css) kicks in once you scroll past a small
+// threshold, giving the bar a real background so it stops overlapping
+// whatever's behind it.
 export function LandingNav() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    function onScroll() {
+      setScrolled(window.scrollY > 24);
+    }
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <nav className="fixed top-0 w-full z-50">
+    <nav className={`fixed top-0 w-full z-50 transition-[background-color,box-shadow] duration-200 ${scrolled ? "landing-nav-scrolled" : ""}`}>
       <div className="max-w-7xl mx-auto px-grid-margin flex justify-between items-center h-20">
         <Link to="/" className="flex items-center drop-shadow-sm" onClick={() => setMenuOpen(false)}>
           <Logo />
