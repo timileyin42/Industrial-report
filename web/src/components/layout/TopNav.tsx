@@ -7,7 +7,7 @@ import { ProfileMenu } from "./ProfileMenu";
 export function TopNav({ title }: { title: string }) {
   return (
     <header className="h-20 flex items-center justify-between gap-4 px-grid-margin sticky top-0 z-40 bg-background/85 backdrop-blur-md">
-      <h2 className="font-headline-md text-headline-md font-bold text-on-surface flex-shrink-0">{title}</h2>
+      <h2 className="font-headline-md text-headline-md font-bold text-on-surface flex-1 min-w-0 truncate md:flex-initial">{title}</h2>
       <div className="hidden md:block flex-1 max-w-md">
         <GlobalSearch />
       </div>
