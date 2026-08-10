@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -177,6 +178,44 @@ func TestHandleMessageAcceptsValidReading(t *testing.T) {
 	}
 	if !processed {
 		t.Fatal("expected the audit log row to be marked processed for a successfully ingested reading")
+	}
+}
+
+// TestHandleMessageDeduplicatesConcurrentDelivery is CLAUDE.md's explicit
+// concurrency requirement: "Duplicate MQTT delivery of the same reading
+// (QoS 1 can redeliver) — handled by the (device_id, ts) unique
+// constraint; verify this holds under concurrent ingestor instances, not
+// just single-process testing." Every goroutine here uses its own pool
+// connection (mirroring separate ingestor processes hitting the same DB
+// concurrently) and the exact same payload — the ON CONFLICT DO NOTHING
+// upsert in cmd/ingestor/main.go must leave exactly one row regardless of
+// how many redeliveries race each other.
+func TestHandleMessageDeduplicatesConcurrentDelivery(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	_, deviceID := seedTestDevice(t, ctx, pool, false)
+	body := validPayload(deviceID)
+	topic := "devices/" + deviceID + "/telemetry"
+
+	const concurrency = 20
+	var wg sync.WaitGroup
+	errs := make([]error, concurrency)
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = handleMessage(ctx, pool, topic, body)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: handleMessage returned an error for a redelivered duplicate: %v", i, err)
+		}
+	}
+	if got := telemetryRowCount(t, ctx, pool, deviceID); got != 1 {
+		t.Fatalf("expected exactly 1 telemetry row after %d concurrent identical deliveries, got %d", concurrency, got)
 	}
 }
 

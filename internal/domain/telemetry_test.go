@@ -108,6 +108,87 @@ func TestTelemetryPayload_Validate_UsesGivenCeiling(t *testing.T) {
 	}
 }
 
+func TestTelemetryPayload_Validate_RejectsNegativeEnergy(t *testing.T) {
+	payload := TelemetryPayload{
+		DeviceID:       "ZG-0001",
+		Timestamp:      "2026-08-05T12:00:00Z",
+		PowerKW:        1.0,
+		EnergyKWhTotal: -0.01,
+		Status:         StatusOK,
+	}
+	if _, err := payload.Validate(10.0); err == nil {
+		t.Error("expected rejection of negative energy_kwh_total, got none")
+	}
+}
+
+func TestTelemetryPayload_Validate_RejectsNegativePower(t *testing.T) {
+	payload := TelemetryPayload{
+		DeviceID:       "ZG-0001",
+		Timestamp:      "2026-08-05T12:00:00Z",
+		PowerKW:        -0.01,
+		EnergyKWhTotal: 5.0,
+		Status:         StatusOK,
+	}
+	if _, err := payload.Validate(10.0); err == nil {
+		t.Error("expected rejection of negative power_kw, got none")
+	}
+}
+
+// voltage_v is documented as optional per concept note §5 — a payload
+// missing it is valid, not an error (CLAUDE.md: "don't reject readings for
+// missing optional fields").
+func TestTelemetryPayload_Validate_AcceptsMissingVoltage(t *testing.T) {
+	payload := TelemetryPayload{
+		DeviceID:       "ZG-0001",
+		Timestamp:      "2026-08-05T12:00:00Z",
+		PowerKW:        1.0,
+		EnergyKWhTotal: 5.0,
+		VoltageV:       nil,
+		Status:         StatusOK,
+	}
+	if _, err := payload.Validate(10.0); err != nil {
+		t.Errorf("expected acceptance of a payload with no voltage_v, got %v", err)
+	}
+}
+
+func TestTelemetryPayload_Validate_RejectsUnrecognizedStatus(t *testing.T) {
+	payload := TelemetryPayload{
+		DeviceID:       "ZG-0001",
+		Timestamp:      "2026-08-05T12:00:00Z",
+		PowerKW:        1.0,
+		EnergyKWhTotal: 5.0,
+		Status:         "banana",
+	}
+	if _, err := payload.Validate(10.0); err == nil {
+		t.Error("expected rejection of an unrecognized status value, got none")
+	}
+}
+
+func TestTelemetryPayload_Validate_RejectsMalformedTimestamp(t *testing.T) {
+	payload := TelemetryPayload{
+		DeviceID:       "ZG-0001",
+		Timestamp:      "not-a-timestamp",
+		PowerKW:        1.0,
+		EnergyKWhTotal: 5.0,
+		Status:         StatusOK,
+	}
+	if _, err := payload.Validate(10.0); err == nil {
+		t.Error("expected rejection of a malformed ts, got none")
+	}
+}
+
+func TestTelemetryPayload_Validate_RejectsMissingDeviceID(t *testing.T) {
+	payload := TelemetryPayload{
+		Timestamp:      "2026-08-05T12:00:00Z",
+		PowerKW:        1.0,
+		EnergyKWhTotal: 5.0,
+		Status:         StatusOK,
+	}
+	if _, err := payload.Validate(10.0); err == nil {
+		t.Error("expected rejection of a payload with no device_id, got none")
+	}
+}
+
 func TestIsCoarseNight(t *testing.T) {
 	cases := []struct {
 		hour int
