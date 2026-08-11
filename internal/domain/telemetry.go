@@ -16,6 +16,15 @@ type TelemetryPayload struct {
 	EnergyKWhTotal float64  `json:"energy_kwh_total"`
 	VoltageV       *float64 `json:"voltage_v,omitempty"` // optional per spec
 	Status         string   `json:"status"`
+	// RSSI is listed in concept-note.md §6's own data model ("Optional
+	// signal strength for diagnostics") and the telemetry table has
+	// carried this column since migrations/0001_init.sql — but until
+	// this field existed here, nothing ever actually read it out of an
+	// incoming payload, so it was silently dropped regardless of what a
+	// real datalogger sent. No validation rule depends on it; it's pure
+	// diagnostic signal for spotting a device with a weak/marginal
+	// connection before it goes fully offline.
+	RSSI *int `json:"rssi,omitempty"`
 }
 
 const (

@@ -35,6 +35,8 @@ import { InviteUserPage } from "./pages/InviteUserPage";
 import { AcceptInvitePage } from "./pages/AcceptInvitePage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { SandboxUploadPage } from "./pages/SandboxUploadPage";
+import { SandboxResultsPage } from "./pages/SandboxResultsPage";
 
 export const router = createBrowserRouter([
   // Public marketing site
@@ -49,6 +51,8 @@ export const router = createBrowserRouter([
   { path: "/accept-invite", element: <AcceptInvitePage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
+  { path: "/sandbox", element: <SandboxUploadPage /> },
+  { path: "/sandbox/:runId", element: <SandboxResultsPage /> },
 
   // Authenticated dashboard app, under /app
   {

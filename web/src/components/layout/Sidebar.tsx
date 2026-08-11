@@ -18,6 +18,7 @@ import {
   HeartPulse,
   ScrollText,
   FileClock,
+  FlaskConical,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -135,7 +136,14 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     label: null,
-    items: [{ to: "/app/ingestion-log", icon: FileClock, label: "Ingestion Log" }],
+    items: [
+      { to: "/app/ingestion-log", icon: FileClock, label: "Ingestion Log" },
+      // /sandbox is a public page outside the authenticated /app tree
+      // entirely (see routes.tsx) — this link just gives an already
+      // logged-in operator a quick way to reach it too, same page
+      // anyone with the share link would land on.
+      { to: "/sandbox", icon: FlaskConical, label: "Sandbox" },
+    ],
   },
 ];
 

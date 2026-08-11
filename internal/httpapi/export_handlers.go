@@ -58,7 +58,7 @@ func (h *handlers) siteTelemetryCSV(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	_ = w.Write([]string{"ts", "device_id", "power_kw", "energy_kwh_total", "voltage_v", "status"})
+	_ = w.Write([]string{"ts", "device_id", "power_kw", "energy_kwh_total", "voltage_v", "status", "rssi"})
 
 	ctx := c.Request().Context()
 	cursor := ""
@@ -75,6 +75,10 @@ func (h *handlers) siteTelemetryCSV(c echo.Context) error {
 			if r.VoltageV.Valid {
 				voltage = fmt.Sprintf("%v", r.VoltageV.Float64)
 			}
+			rssi := ""
+			if r.Rssi.Valid {
+				rssi = fmt.Sprintf("%d", r.Rssi.Int32)
+			}
 			_ = w.Write([]string{
 				r.Ts.Time.UTC().Format(time.RFC3339),
 				r.DeviceID,
@@ -82,6 +86,7 @@ func (h *handlers) siteTelemetryCSV(c echo.Context) error {
 				fmt.Sprintf("%v", r.EnergyKwhTotal),
 				voltage,
 				string(r.Status),
+				rssi,
 			})
 			rowCount++
 		}

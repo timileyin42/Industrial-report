@@ -32,6 +32,7 @@ type Deps struct {
 	PasswordReset  *registry.PasswordReset
 	Exports        *registry.Exports
 	Alerts         *registry.Alerts
+	Sandbox        *registry.Sandbox
 	Issuer         auth.TokenIssuer
 }
 
@@ -48,6 +49,11 @@ func NewRouter(deps Deps) *echo.Echo {
 	// Same rate as login — both are public, credential-adjacent endpoints
 	// (accept-invite sets a password; password-reset issues a token).
 	authLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
+	// Sandbox uploads are public and do real work (CSV parsing, DB
+	// writes) per request — rate-limited same as the other public,
+	// no-account endpoints above, not just the size cap in
+	// sandbox_handlers.go.
+	sandboxLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
 
 	v1 := e.Group("/v1")
 
@@ -56,6 +62,15 @@ func NewRouter(deps Deps) *echo.Echo {
 	v1.POST("/invites/accept", h.acceptInvite, authLimiter)
 	v1.POST("/auth/password-reset/request", h.requestPasswordReset, authLimiter)
 	v1.POST("/auth/password-reset/confirm", h.confirmPasswordReset, authLimiter)
+
+	// Sandbox — public, no login, deliberately isolated from every real
+	// site/device/telemetry table (migrations/0014_sandbox.sql). A
+	// no-account "upload your own data and see it validated like a real
+	// device's would be" demo, shareable by link (the run_id itself is
+	// the access token — see registry.newSandboxRunID). Never wired
+	// behind auth.RequireAuth on purpose.
+	v1.POST("/sandbox", h.uploadSandbox, sandboxLimiter)
+	v1.GET("/sandbox/:run_id", h.getSandbox)
 
 	// Authenticated
 	authed := v1.Group("", auth.RequireAuth(deps.Issuer))

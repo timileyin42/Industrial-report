@@ -52,6 +52,7 @@ export function LandingNav() {
           <NavLink to="/features" className={linkClass}>Features</NavLink>
           <NavLink to="/solutions" className={linkClass}>Solutions</NavLink>
           <NavLink to="/company" className={linkClass}>Company</NavLink>
+          <NavLink to="/sandbox" className={linkClass}>Sandbox</NavLink>
         </div>
         <div className="hidden md:flex items-center gap-4">
           <Link
@@ -74,6 +75,7 @@ export function LandingNav() {
           <NavLink to="/features" className={mobileLinkClass} onClick={() => setMenuOpen(false)}>Features</NavLink>
           <NavLink to="/solutions" className={mobileLinkClass} onClick={() => setMenuOpen(false)}>Solutions</NavLink>
           <NavLink to="/company" className={mobileLinkClass} onClick={() => setMenuOpen(false)}>Company</NavLink>
+          <NavLink to="/sandbox" className={mobileLinkClass} onClick={() => setMenuOpen(false)}>Sandbox</NavLink>
           <Link
             to="/login"
             className="my-4 text-center bg-primary-container text-on-primary-container font-semibold px-4 py-3 rounded transition-colors"

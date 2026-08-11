@@ -12,7 +12,7 @@ import (
 )
 
 const listTelemetryForSite = `-- name: ListTelemetryForSite :many
-SELECT ts, power_kw, energy_kwh_total, voltage_v, status, device_id
+SELECT ts, power_kw, energy_kwh_total, voltage_v, status, device_id, rssi
 FROM telemetry
 WHERE site_id = $1
   AND ($2::timestamptz IS NULL OR ts >= $2)
@@ -41,6 +41,7 @@ type ListTelemetryForSiteRow struct {
 	VoltageV       pgtype.Float8
 	Status         ReadingStatus
 	DeviceID       string
+	Rssi           pgtype.Int4
 }
 
 // Keyset pagination on (ts, device_id) DESC. cursor_ts NULL means first page.
@@ -68,6 +69,7 @@ func (q *Queries) ListTelemetryForSite(ctx context.Context, arg ListTelemetryFor
 			&i.VoltageV,
 			&i.Status,
 			&i.DeviceID,
+			&i.Rssi,
 		); err != nil {
 			return nil, err
 		}

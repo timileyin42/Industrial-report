@@ -82,6 +82,7 @@ func main() {
 		log.Fatalf("r2 storage init: %v", err)
 	}
 	exports := registry.NewExports(queries, telemetry, analytics, storageClient)
+	sandbox := registry.NewSandbox(queries)
 
 	e := httpapi.NewRouter(httpapi.Deps{
 		Sites:          sites,
@@ -99,6 +100,7 @@ func main() {
 		PasswordReset:  passwordReset,
 		Exports:        exports,
 		Alerts:         alerts,
+		Sandbox:        sandbox,
 		Issuer:         auth.NewTokenIssuer(jwtSecret),
 	})
 

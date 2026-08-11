@@ -16,6 +16,7 @@ type telemetryPointResponse struct {
 	EnergyKWh float64   `json:"energy_kwh_total"`
 	VoltageV  *float64  `json:"voltage_v,omitempty"`
 	Status    string    `json:"status"`
+	RSSI      *int32    `json:"rssi,omitempty"`
 }
 
 // listTelemetry replaces Phase 0's unbounded 24h scan with an auth-gated,
@@ -44,6 +45,10 @@ func (h *handlers) listTelemetry(c echo.Context) error {
 
 	items := make([]telemetryPointResponse, 0, len(rows))
 	for _, r := range rows {
+		var rssi *int32
+		if r.Rssi.Valid {
+			rssi = &r.Rssi.Int32
+		}
 		items = append(items, telemetryPointResponse{
 			Timestamp: r.Ts.Time,
 			DeviceID:  r.DeviceID,
@@ -51,6 +56,7 @@ func (h *handlers) listTelemetry(c echo.Context) error {
 			EnergyKWh: r.EnergyKwhTotal,
 			VoltageV:  float8Ptr(r.VoltageV),
 			Status:    string(r.Status),
+			RSSI:      rssi,
 		})
 	}
 	return c.JSON(http.StatusOK, pageResponse[telemetryPointResponse]{Items: items, NextCursor: next})

@@ -292,6 +292,31 @@ type PasswordResetToken struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type SandboxReading struct {
+	ID              int64
+	RunID           string
+	RowNumber       int32
+	Ts              pgtype.Timestamptz
+	PowerKw         pgtype.Float8
+	EnergyKwhTotal  pgtype.Float8
+	VoltageV        pgtype.Float8
+	Status          pgtype.Text
+	Accepted        bool
+	RejectionReason pgtype.Text
+	Provenance      pgtype.Text
+	IsReset         bool
+	Rssi            pgtype.Int4
+}
+
+type SandboxRun struct {
+	ID            string
+	SystemSizeKw  pgtype.Numeric
+	RowCount      int32
+	AcceptedCount int32
+	RejectedCount int32
+	CreatedAt     pgtype.Timestamptz
+}
+
 type Site struct {
 	SiteID            string
 	CohortID          pgtype.Text

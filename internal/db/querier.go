@@ -24,6 +24,8 @@ type Querier interface {
 	CreateExportJob(ctx context.Context, arg CreateExportJobParams) (ExportJob, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) (PasswordResetToken, error)
+	CreateSandboxReading(ctx context.Context, arg CreateSandboxReadingParams) error
+	CreateSandboxRun(ctx context.Context, arg CreateSandboxRunParams) (SandboxRun, error)
 	CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserActionAuditLog(ctx context.Context, arg CreateUserActionAuditLogParams) error
@@ -33,6 +35,11 @@ type Querier interface {
 	// energy total elsewhere on this platform. A LATERAL join per device,
 	// not a rollup — deliberately live, not pre-aggregated.
 	CurrentFleetGeneration(ctx context.Context, onlineCutoff pgtype.Timestamptz) (float64, error)
+	// Lazy self-cleanup instead of a cron job: run once whenever a new
+	// upload happens (see registry.Sandbox.Upload). This is public,
+	// unauthenticated, and accumulates over time — nothing else ever purges
+	// it otherwise.
+	DeleteOldSandboxRuns(ctx context.Context, createdAt pgtype.Timestamptz) error
 	// Same optional-cohort-filter pattern as ListFleetDailyRollup — used by
 	// Analytics.FleetSpecificYield to normalize fleet-wide energy against
 	// fleet-wide (or cohort-wide) capacity, not one site's.
@@ -61,6 +68,7 @@ type Querier interface {
 	// delta, without needing to know exactly when in the day the reset
 	// occurred.
 	GetRawEnergyReadingsForDeviceDay(ctx context.Context, arg GetRawEnergyReadingsForDeviceDayParams) ([]GetRawEnergyReadingsForDeviceDayRow, error)
+	GetSandboxRun(ctx context.Context, id string) (SandboxRun, error)
 	GetSite(ctx context.Context, siteID string) (Site, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
@@ -106,6 +114,10 @@ type Querier interface {
 	// Feeds the Alerts page — a revocation is a real, timestamped event
 	// worth surfacing there, same as an offline/fault condition.
 	ListRecentlyRevokedDevices(ctx context.Context, since pgtype.Timestamptz) ([]Device, error)
+	// Unpaginated by design — a run is capped at a small row count
+	// (registry.MaxSandboxRows) when uploaded, so this always returns a
+	// bounded result, same reasoning as ListSitesForAnalytics.
+	ListSandboxReadings(ctx context.Context, runID string) ([]SandboxReading, error)
 	// Site->country lookup for fleet-wide emissions, which must resolve each
 	// site's own grid factor rather than one global default (see
 	// internal/registry/emissions.go FleetEmissions). Unpaginated: this is an

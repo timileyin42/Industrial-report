@@ -181,6 +181,61 @@ func TestHandleMessageAcceptsValidReading(t *testing.T) {
 	}
 }
 
+// TestHandleMessageStoresRSSI is the regression test for a real gap found
+// against concept-note.md §6's own data model: rssi ("optional signal
+// strength for diagnostics") has had a column in the telemetry table
+// since migrations/0001_init.sql, but domain.TelemetryPayload never had a
+// field for it, so any real datalogger sending rssi had it silently
+// dropped on the floor regardless. Confirms it's actually persisted now.
+func TestHandleMessageStoresRSSI(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	_, deviceID := seedTestDevice(t, ctx, pool, false)
+
+	rssi := -67
+	body, _ := json.Marshal(domain.TelemetryPayload{
+		DeviceID:       deviceID,
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+		PowerKW:        2.5,
+		EnergyKWhTotal: 100,
+		Status:         domain.StatusOK,
+		RSSI:           &rssi,
+	})
+
+	if err := handleMessage(ctx, pool, "devices/"+deviceID+"/telemetry", body); err != nil {
+		t.Fatalf("handleMessage: %v", err)
+	}
+
+	var got *int
+	if err := pool.QueryRow(ctx, `SELECT rssi FROM telemetry WHERE device_id = $1`, deviceID).Scan(&got); err != nil {
+		t.Fatalf("query stored rssi: %v", err)
+	}
+	if got == nil || *got != rssi {
+		t.Fatalf("expected stored rssi %d, got %v", rssi, got)
+	}
+}
+
+// TestHandleMessageAcceptsMissingRSSI confirms omitting rssi (still
+// entirely optional, same as voltage_v) doesn't break ingestion — the
+// column should just stay NULL, not reject the reading.
+func TestHandleMessageAcceptsMissingRSSI(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	_, deviceID := seedTestDevice(t, ctx, pool, false)
+
+	if err := handleMessage(ctx, pool, "devices/"+deviceID+"/telemetry", validPayload(deviceID)); err != nil {
+		t.Fatalf("handleMessage: %v", err)
+	}
+
+	var got *int
+	if err := pool.QueryRow(ctx, `SELECT rssi FROM telemetry WHERE device_id = $1`, deviceID).Scan(&got); err != nil {
+		t.Fatalf("query stored rssi: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected rssi to stay NULL when omitted, got %v", *got)
+	}
+}
+
 // TestHandleMessageDeduplicatesConcurrentDelivery is CLAUDE.md's explicit
 // concurrency requirement: "Duplicate MQTT delivery of the same reading
 // (QoS 1 can redeliver) — handled by the (device_id, ts) unique

@@ -195,11 +195,11 @@ func handleMessage(ctx context.Context, pool *pgxpool.Pool, topic string, raw []
 
 	// Step 6: upsert with dedup on (device_id, ts).
 	_, err = pool.Exec(ctx,
-		`INSERT INTO telemetry (device_id, site_id, ts, power_kw, energy_kwh_total, voltage_v, status, provenance, quality_flags)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO telemetry (device_id, site_id, ts, power_kw, energy_kwh_total, voltage_v, status, provenance, quality_flags, rssi)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 ON CONFLICT (device_id, ts) DO NOTHING`,
 		deviceID, siteID, ts, payload.PowerKW, payload.EnergyKWhTotal, payload.VoltageV, coalesceStatus(payload.Status),
-		string(provenance), qualityFlags,
+		string(provenance), qualityFlags, payload.RSSI,
 	)
 	if err != nil {
 		markAuditError(ctx, pool, auditID, "insert: "+err.Error())

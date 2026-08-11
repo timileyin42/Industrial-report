@@ -155,3 +155,29 @@ CREATE TABLE export_jobs (
     created_at            timestamptz NOT NULL DEFAULT now(),
     completed_at          timestamptz
 );
+
+-- mirrors migrations/0014_sandbox.sql
+CREATE TABLE sandbox_runs (
+    id             text PRIMARY KEY,
+    system_size_kw numeric,
+    row_count      integer NOT NULL DEFAULT 0,
+    accepted_count integer NOT NULL DEFAULT 0,
+    rejected_count integer NOT NULL DEFAULT 0,
+    created_at     timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE sandbox_readings (
+    id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_id           text NOT NULL REFERENCES sandbox_runs(id) ON DELETE CASCADE,
+    row_number       integer NOT NULL,
+    ts               timestamptz,
+    power_kw         double precision,
+    energy_kwh_total double precision,
+    voltage_v        double precision,
+    status           text,
+    accepted         boolean NOT NULL,
+    rejection_reason text,
+    provenance       text,
+    is_reset         boolean NOT NULL DEFAULT false,
+    rssi             integer
+);

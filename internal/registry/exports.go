@@ -150,7 +150,7 @@ func (e *Exports) build(ctx context.Context, jobType db.ExportJobType, siteID *s
 
 	switch jobType {
 	case db.ExportJobTypeSiteTelemetryCsv:
-		_ = w.Write([]string{"ts", "device_id", "power_kw", "energy_kwh_total", "voltage_v", "status"})
+		_ = w.Write([]string{"ts", "device_id", "power_kw", "energy_kwh_total", "voltage_v", "status", "rssi"})
 		cursor := ""
 		rowCount := 0
 		for {
@@ -163,9 +163,13 @@ func (e *Exports) build(ctx context.Context, jobType db.ExportJobType, siteID *s
 				if r.VoltageV.Valid {
 					voltage = fmt.Sprintf("%v", r.VoltageV.Float64)
 				}
+				rssi := ""
+				if r.Rssi.Valid {
+					rssi = fmt.Sprintf("%d", r.Rssi.Int32)
+				}
 				_ = w.Write([]string{
 					r.Ts.Time.UTC().Format(time.RFC3339), r.DeviceID,
-					fmt.Sprintf("%v", r.PowerKw), fmt.Sprintf("%v", r.EnergyKwhTotal), voltage, string(r.Status),
+					fmt.Sprintf("%v", r.PowerKw), fmt.Sprintf("%v", r.EnergyKwhTotal), voltage, string(r.Status), rssi,
 				})
 				rowCount++
 			}

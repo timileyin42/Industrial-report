@@ -80,6 +80,10 @@ export const TelemetryPointSchema = z.object({
   energy_kwh_total: z.number(),
   voltage_v: z.number().nullable().optional(),
   status: z.enum(["ok", "fault", "offline"]),
+  // Signal strength — concept-note.md §6's own "Optional signal strength
+  // for diagnostics." Nothing renders this yet; added for completeness
+  // alongside the backend finally reading it out of incoming payloads.
+  rssi: z.number().nullable().optional(),
 });
 export type TelemetryPoint = z.infer<typeof TelemetryPointSchema>;
 
