@@ -172,7 +172,7 @@ export function HomePage() {
           <div className="max-w-7xl mx-auto px-grid-margin">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               {[
-                { label: "Sites Monitored", value: "1,200+" },
+                { label: "Sites Monitored", value: "600+" },
                 { label: "Data Completeness", value: "99.6", unit: "%" },
                 { label: "Platform Uptime", value: "99.9", unit: "%" },
               ].map((stat) => (

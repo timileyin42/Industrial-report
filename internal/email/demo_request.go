@@ -8,35 +8,33 @@ import (
 // Same visual language as web/src/index.css's light/glass tokens
 // (@theme block) — primary #2f8fe0, on-surface #1e2a3a, surface-dim
 // #eef4fb — transcribed here rather than imported, since this package
-// has no dependency on the frontend build. The bar-chart mark is drawn
-// with inline-styled table cells (web/src/assets/brand/logo-mark.svg's
-// three bars/dots), not an <img>, so it renders without depending on
-// image hosting or data-URI support in the recipient's email client.
-const logoMarkHTML = `
-<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;vertical-align:middle">
-	<tr style="height:26px">
-		<td></td>
-		<td></td>
-		<td style="width:8px;height:8px;background:#8be0ad;border-radius:50%;"></td>
-	</tr>
-	<tr style="height:14px">
-		<td></td>
-		<td style="width:8px;height:8px;background:#8be0ad;border-radius:50%;"></td>
-		<td></td>
-	</tr>
-	<tr style="height:6px">
-		<td style="width:8px;height:8px;background:#8be0ad;border-radius:50%;"></td>
-		<td></td>
-		<td></td>
-	</tr>
-	<tr>
-		<td style="width:8px;height:18px;background:#3f6b52;border-radius:2px;"></td>
-		<td style="width:4px"></td>
-		<td style="width:8px;height:26px;background:#4f9d6b;border-radius:2px;"></td>
-		<td style="width:4px"></td>
-		<td style="width:8px;height:38px;background:#57c785;border-radius:2px;"></td>
-	</tr>
-</table>`
+// has no dependency on the frontend build.
+//
+// The bar-chart mark is drawn with inline-styled table cells
+// (web/src/assets/brand/logo-mark.svg's three ascending bars), not an
+// <img>, so it renders without depending on image hosting or data-URI
+// support in the recipient's email client. Deliberately NOT replicating
+// the SVG's accent dots: a shared grid of empty spacer <td>s sized only
+// by row height (no explicit width/height per cell) renders fine in a
+// desktop browser but Gmail's Android app collapses/stretches those
+// cells unpredictably, turning border-radius:50% dots into the
+// teardrop shape seen in testing. Each bar is its own tiny nested
+// table instead, so no column's width depends on another's.
+func logoBar(width, height int, color string) string {
+	return fmt.Sprintf(
+		`<table role="presentation" width="%d" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td width="%d" height="%d" bgcolor="%s" style="width:%dpx;height:%dpx;background-color:%s;line-height:1px;font-size:1px;border-radius:2px">&nbsp;</td></tr></table>`,
+		width, width, height, color, width, height, color)
+}
+
+var logoMarkHTML = fmt.Sprintf(
+	`<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;vertical-align:middle;border-collapse:collapse"><tr>
+		<td valign="bottom">%s</td>
+		<td width="4" style="width:4px;font-size:1px;line-height:1px">&nbsp;</td>
+		<td valign="bottom">%s</td>
+		<td width="4" style="width:4px;font-size:1px;line-height:1px">&nbsp;</td>
+		<td valign="bottom">%s</td>
+	</tr></table>`,
+	logoBar(8, 18, "#3f6b52"), logoBar(8, 26, "#4f9d6b"), logoBar(8, 38, "#57c785"))
 
 func demoRequestLayout(heading, body string) string {
 	return fmt.Sprintf(`
@@ -66,11 +64,15 @@ func AdminDemoRequestEmail(organization, requesterEmail string) (subject, htmlBo
 		<p style="color:#1e2a3a;font-size:14px;line-height:1.6">
 			A prospect submitted the "Initialize Deployment" form on the marketing site.
 		</p>
-		<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%%;margin:16px 0;background:#f3f8fd;border-radius:12px;padding:16px">
-			<tr><td style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;padding:4px 16px">Organization</td></tr>
-			<tr><td style="font-size:16px;font-weight:600;color:#1e2a3a;padding:0 16px 12px">%s</td></tr>
-			<tr><td style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;padding:4px 16px">Contact Email</td></tr>
-			<tr><td style="font-size:16px;font-weight:600;color:#2f8fe0;padding:0 16px 4px">%s</td></tr>
+		<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" style="width:100%%;border-collapse:collapse;margin:16px 0">
+			<tr>
+				<td bgcolor="#f3f8fd" style="background-color:#f3f8fd;border-radius:12px;padding:16px">
+					<span style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b">Organization</span>
+					<span style="display:block;font-size:16px;font-weight:600;color:#1e2a3a;margin:4px 0 12px;word-break:break-word">%s</span>
+					<span style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b">Contact Email</span>
+					<span style="display:block;font-size:16px;font-weight:600;color:#2f8fe0;margin-top:4px;word-break:break-word">%s</span>
+				</td>
+			</tr>
 		</table>
 		<p style="color:#64748b;font-size:13px">Reply directly to their email to follow up.</p>`,
 		html.EscapeString(organization), html.EscapeString(requesterEmail))
