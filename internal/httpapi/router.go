@@ -33,6 +33,7 @@ type Deps struct {
 	Exports        *registry.Exports
 	Alerts         *registry.Alerts
 	Sandbox        *registry.Sandbox
+	DemoRequests   *registry.DemoRequests
 	Issuer         auth.TokenIssuer
 }
 
@@ -54,6 +55,10 @@ func NewRouter(deps Deps) *echo.Echo {
 	// no-account endpoints above, not just the size cap in
 	// sandbox_handlers.go.
 	sandboxLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
+	// Same public/unauthenticated rate class as sandbox uploads — this
+	// endpoint sends real email per request, an abuse vector if left
+	// unlimited.
+	demoRequestLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
 
 	v1 := e.Group("/v1")
 
@@ -71,6 +76,10 @@ func NewRouter(deps Deps) *echo.Echo {
 	// behind auth.RequireAuth on purpose.
 	v1.POST("/sandbox", h.uploadSandbox, sandboxLimiter)
 	v1.GET("/sandbox/:run_id", h.getSandbox)
+
+	// Demo requests — the marketing site's "Request a Demo" CTA/contact
+	// form. Public, no login, same reasoning as sandbox above.
+	v1.POST("/demo-requests", h.createDemoRequest, demoRequestLimiter)
 
 	// Authenticated
 	authed := v1.Group("", auth.RequireAuth(deps.Issuer))

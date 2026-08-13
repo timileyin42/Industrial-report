@@ -68,6 +68,30 @@ func (q *Queries) CreateUserActionAuditLog(ctx context.Context, arg CreateUserAc
 	return err
 }
 
+const getEarliestOperator = `-- name: GetEarliestOperator :one
+SELECT id, email, password_hash, role, site_id, created_at, disabled_at FROM users WHERE role = 'operator' ORDER BY created_at ASC, id ASC LIMIT 1
+`
+
+// The first operator account ever created in this environment — i.e.
+// the one created via cmd/seed-operator, not necessarily still the only
+// operator. Used to route marketing-site notifications (demo requests)
+// to a real inbox without a dedicated "company notification address"
+// concept in the schema.
+func (q *Queries) GetEarliestOperator(ctx context.Context) (User, error) {
+	row := q.db.QueryRow(ctx, getEarliestOperator)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.Role,
+		&i.SiteID,
+		&i.CreatedAt,
+		&i.DisabledAt,
+	)
+	return i, err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, password_hash, role, site_id, created_at, disabled_at FROM users WHERE email = $1
 `

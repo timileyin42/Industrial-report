@@ -83,6 +83,13 @@ func main() {
 	}
 	exports := registry.NewExports(queries, telemetry, analytics, storageClient)
 	sandbox := registry.NewSandbox(queries)
+	// COMPANY_CONTACT_EMAIL is separate from the seeded operator's login
+	// email — the demo-request form notifies both, per CLAUDE.md's
+	// principle of not conflating distinct concerns (here: "who can log
+	// in" vs. "who handles sales inquiries"). Unset just skips that half
+	// of the notification (see DemoRequests.Submit), same no-op-if-unset
+	// pattern as RESEND_API_KEY.
+	demoRequests := registry.NewDemoRequests(queries, sender, os.Getenv("COMPANY_CONTACT_EMAIL"))
 
 	e := httpapi.NewRouter(httpapi.Deps{
 		Sites:          sites,
@@ -101,6 +108,7 @@ func main() {
 		Exports:        exports,
 		Alerts:         alerts,
 		Sandbox:        sandbox,
+		DemoRequests:   demoRequests,
 		Issuer:         auth.NewTokenIssuer(jwtSecret),
 	})
 

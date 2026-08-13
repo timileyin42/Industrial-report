@@ -9,6 +9,14 @@ SELECT * FROM users WHERE email = $1;
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 
+-- name: GetEarliestOperator :one
+-- The first operator account ever created in this environment — i.e.
+-- the one created via cmd/seed-operator, not necessarily still the only
+-- operator. Used to route marketing-site notifications (demo requests)
+-- to a real inbox without a dedicated "company notification address"
+-- concept in the schema.
+SELECT * FROM users WHERE role = 'operator' ORDER BY created_at ASC, id ASC LIMIT 1;
+
 -- name: ListUsers :many
 -- Keyset pagination, same convention as ListSites/ListDevices.
 SELECT * FROM users

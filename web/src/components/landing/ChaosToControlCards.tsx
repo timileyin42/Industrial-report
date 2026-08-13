@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { Layers, ShieldCheck, FileCheck2, type LucideIcon } from "lucide-react";
 
 interface CardData {
+  icon: LucideIcon;
   from: string;
   to: string;
   body: string;
@@ -9,16 +11,19 @@ interface CardData {
 
 const CARDS: CardData[] = [
   {
+    icon: Layers,
     from: "Fragmented Data",
     to: "Unified Fleet View",
     body: "Aggregate inverter, meter, and weather station data across multiple OEMs into one normalized schema.",
   },
   {
+    icon: ShieldCheck,
     from: "Opaque Status",
     to: "Verified Reporting",
     body: "Real-time device-level status monitoring with data provenance for full auditability.",
   },
   {
+    icon: FileCheck2,
     from: "Unstructured Data",
     to: "Audit-Ready ESG",
     body: "Generate structured reports for carbon avoidance and energy yield tailored for regulatory compliance.",
@@ -56,6 +61,9 @@ export function ChaosToControlCards() {
             style={{ transformOrigin: "center center", zIndex: isHovered ? 10 : 0 }}
             className="relative bg-surface-container-low p-6 rounded-lg border border-outline-variant flex flex-col gap-4 cursor-default"
           >
+            <div className="w-10 h-10 rounded bg-primary-container/20 flex items-center justify-center border border-primary-container">
+              <item.icon size={20} className="text-primary" />
+            </div>
             <div className="flex justify-between items-center pb-4 border-b border-outline-variant">
               <span className="text-error/80 font-semibold line-through">{item.from}</span>
               <span className="text-outline">→</span>

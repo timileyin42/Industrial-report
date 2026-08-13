@@ -56,6 +56,12 @@ type Querier interface {
 	// 409, never a fabricated default.
 	GetCurrentEmissionFactor(ctx context.Context, country string) (GridEmissionFactor, error)
 	GetDevice(ctx context.Context, deviceID string) (Device, error)
+	// The first operator account ever created in this environment — i.e.
+	// the one created via cmd/seed-operator, not necessarily still the only
+	// operator. Used to route marketing-site notifications (demo requests)
+	// to a real inbox without a dedicated "company notification address"
+	// concept in the schema.
+	GetEarliestOperator(ctx context.Context) (User, error)
 	GetExportJob(ctx context.Context, id int64) (ExportJob, error)
 	// Continuous aggregates can't express argmax, so the peak reading's time
 	// of day is resolved via a narrow indexed point lookup instead of a scan.

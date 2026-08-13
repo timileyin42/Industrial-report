@@ -1,5 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useLocation } from "react-router-dom";
 import { ShieldCheck, BadgeCheck, Network } from "lucide-react";
+import { submitDemoRequest } from "../../api/demoRequests";
+import { ApiError } from "../../api/types";
 import { LandingNav } from "./LandingNav";
 import { LandingFooter } from "./LandingFooter";
 
@@ -10,10 +13,29 @@ import { LandingFooter } from "./LandingFooter";
 // new colors.
 export function CompanyPage() {
   const [submitted, setSubmitted] = useState(false);
+  const [organization, setOrganization] = useState("");
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { hash } = useLocation();
 
-  function handleSubmit(e: FormEvent) {
+  useEffect(() => {
+    if (!hash) return;
+    document.querySelector(hash)?.scrollIntoView({ behavior: "smooth" });
+  }, [hash]);
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setSubmitted(true);
+    setError(null);
+    setSubmitting(true);
+    try {
+      await submitDemoRequest(organization, email);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't reach the server. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -123,7 +145,7 @@ export function CompanyPage() {
           </div>
         </section>
 
-        <section className="py-24 border-t border-outline-variant bg-surface-container-low">
+        <section id="contact" className="py-24 border-t border-outline-variant bg-surface-container-low">
           <div className="max-w-3xl mx-auto px-grid-margin text-center">
             <h2 className="font-headline-lg text-headline-lg text-on-surface mb-6">Initialize Deployment</h2>
             <p className="text-[18px] leading-relaxed text-on-surface-variant mb-10">
@@ -139,6 +161,8 @@ export function CompanyPage() {
                   <label className="block font-data-mono-sm text-data-mono-sm text-on-surface-variant mb-2">ORGANIZATION</label>
                   <input
                     required
+                    value={organization}
+                    onChange={(e) => setOrganization(e.target.value)}
                     className="w-full bg-surface border border-outline-variant rounded px-4 py-2 text-on-surface font-data-mono-sm text-data-mono-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                     placeholder="Company Name"
                     type="text"
@@ -148,16 +172,20 @@ export function CompanyPage() {
                   <label className="block font-data-mono-sm text-data-mono-sm text-on-surface-variant mb-2">EMAIL</label>
                   <input
                     required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-surface border border-outline-variant rounded px-4 py-2 text-on-surface font-data-mono-sm text-data-mono-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                     placeholder="user@domain.com"
                     type="email"
                   />
                 </div>
+                {error && <p className="text-[13px] text-error">{error}</p>}
                 <button
                   type="submit"
-                  className="w-full bg-primary-container text-on-primary-container px-4 py-3 rounded font-label-caps text-label-caps uppercase hover:bg-primary transition-colors mt-6"
+                  disabled={submitting}
+                  className="w-full bg-primary-container text-on-primary-container px-4 py-3 rounded font-label-caps text-label-caps uppercase hover:bg-primary transition-colors mt-6 disabled:opacity-50"
                 >
-                  Request System Architecture Review
+                  {submitting ? "Sending…" : "Request System Architecture Review"}
                 </button>
               </form>
             )}
