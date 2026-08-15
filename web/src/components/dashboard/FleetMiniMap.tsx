@@ -79,12 +79,18 @@ export function FleetMiniMap({
         map,
         title: site.name ?? site.site_id,
         icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: compact ? 7 : 9,
+          // Classic teardrop location-pin silhouette (same glyph as the
+          // sidebar's "Sites" nav icon) — flat status-colored dots read
+          // as generic data points, not a place on a map. Anchored at
+          // the tip (24 in a 0-24 viewBox) so the pin's point touches
+          // the actual coordinate, not its visual center.
+          path: "M12 0C7.31 0 3.5 3.81 3.5 8.5c0 6.5 8.5 15.5 8.5 15.5s8.5-9 8.5-15.5C20.5 3.81 16.69 0 12 0z",
+          scale: compact ? 1.1 : 1.5,
           fillColor: color,
           fillOpacity: 1,
           strokeColor: "#ffffff",
-          strokeWeight: 2,
+          strokeWeight: 1.5,
+          anchor: new google.maps.Point(12, 24),
         },
       });
       if (onSiteClick) marker.addListener("click", () => onSiteClick(site.site_id));
