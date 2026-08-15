@@ -18,6 +18,8 @@ export function RegisterDevicePage() {
   const [deviceId, setDeviceId] = useState("");
   const [siteId, setSiteId] = useState("");
   const [installNotes, setInstallNotes] = useState("");
+  const [inverterBrand, setInverterBrand] = useState("");
+  const [inverterModel, setInverterModel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<DeviceWithSecret | null>(null);
@@ -30,7 +32,13 @@ export function RegisterDevicePage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      const device = await registerDevice({ device_id: deviceId, site_id: siteId, install_notes: installNotes || undefined });
+      const device = await registerDevice({
+        device_id: deviceId,
+        site_id: siteId,
+        install_notes: installNotes || undefined,
+        inverter_brand: inverterBrand || undefined,
+        inverter_model: inverterModel || undefined,
+      });
       setResult(device);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to register device");
@@ -150,15 +158,38 @@ export function RegisterDevicePage() {
             <h3 className="font-label-caps text-on-surface tracking-wider border-b border-outline-variant/30 pb-4 mb-6">
               DEPLOYMENT CONTEXT
             </h3>
-            <div>
-              <label className={labelClass}>INSTALLATION NOTES</label>
-              <textarea
-                className={`${inputClass} resize-none`}
-                rows={4}
-                placeholder="Mounting details, technician ID, environmental constraints..."
-                value={installNotes}
-                onChange={(e) => setInstallNotes(e.target.value)}
-              />
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className={labelClass}>INVERTER BRAND (OPTIONAL)</label>
+                  <select className={inputClass} value={inverterBrand} onChange={(e) => setInverterBrand(e.target.value)}>
+                    <option value="">Unknown / not a hybrid inverter</option>
+                    <option value="chisage">Chisage</option>
+                    <option value="felicity">Felicity Solar</option>
+                    <option value="extra_power">Extra Power</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>INVERTER MODEL (OPTIONAL)</label>
+                  <input
+                    className={inputClass}
+                    placeholder="e.g. 5kW Hybrid"
+                    value={inverterModel}
+                    onChange={(e) => setInverterModel(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelClass}>INSTALLATION NOTES</label>
+                <textarea
+                  className={`${inputClass} resize-none`}
+                  rows={4}
+                  placeholder="Mounting details, technician ID, environmental constraints..."
+                  value={installNotes}
+                  onChange={(e) => setInstallNotes(e.target.value)}
+                />
+              </div>
             </div>
           </section>
 

@@ -34,8 +34,8 @@ export function LandingFooter() {
   return (
     <footer className="w-full bg-surface-container-lowest border-t border-outline-variant">
       <div className="max-w-7xl mx-auto px-grid-margin py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
-          <div className="md:col-span-1">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-10 md:gap-10">
+          <div className="col-span-2 md:col-span-1">
             <Link to="/" className="inline-flex items-center opacity-80 hover:opacity-100 transition-opacity" aria-label="Back to home">
               <Logo />
             </Link>

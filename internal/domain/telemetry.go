@@ -25,6 +25,16 @@ type TelemetryPayload struct {
 	// diagnostic signal for spotting a device with a weak/marginal
 	// connection before it goes fully offline.
 	RSSI *int `json:"rssi,omitempty"`
+	// Hybrid-inverter fields (Chisage/Felicity/Extra Power field
+	// deployment). All optional, same
+	// "missing is valid, not an error" rule as VoltageV: a grid-tie-only
+	// inverter with no battery, or any device predating this field,
+	// simply won't send these, and that's not a validation failure.
+	PVPowerKW       *float64 `json:"pv_power_kw,omitempty"`     // solar-side output, distinct from AC output above
+	BatterySOCPct   *float64 `json:"battery_soc_pct,omitempty"` // 0-100
+	BatteryVoltageV *float64 `json:"battery_voltage_v,omitempty"`
+	PVVoltageV      *float64 `json:"pv_voltage_v,omitempty"`
+	OutputVoltageV  *float64 `json:"output_voltage_v,omitempty"`
 }
 
 const (
@@ -53,6 +63,21 @@ func (p TelemetryPayload) Validate(maxPlausibleKW float64) (time.Time, error) {
 	}
 	if p.PowerKW > maxPlausibleKW {
 		return time.Time{}, fmt.Errorf("power_kw %v exceeds plausible ceiling %v", p.PowerKW, maxPlausibleKW)
+	}
+	if p.PVPowerKW != nil {
+		if *p.PVPowerKW < 0 {
+			return time.Time{}, fmt.Errorf("pv_power_kw cannot be negative: %v", *p.PVPowerKW)
+		}
+		// PV (solar-side) output is the source the AC output is drawn
+		// from — same plausibility ceiling as power_kw, not a separate,
+		// looser one, since a PV reading far above rated system size is
+		// exactly as physically implausible as an AC one.
+		if *p.PVPowerKW > maxPlausibleKW {
+			return time.Time{}, fmt.Errorf("pv_power_kw %v exceeds plausible ceiling %v", *p.PVPowerKW, maxPlausibleKW)
+		}
+	}
+	if p.BatterySOCPct != nil && (*p.BatterySOCPct < 0 || *p.BatterySOCPct > 100) {
+		return time.Time{}, fmt.Errorf("battery_soc_pct %v out of range 0-100", *p.BatterySOCPct)
 	}
 	switch p.Status {
 	case StatusOK, StatusFault, StatusOffline:

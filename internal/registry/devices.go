@@ -30,11 +30,18 @@ func NewDevices(q *db.Queries, onlineThreshold, expectedInterval time.Duration, 
 }
 
 var ErrUnknownSite = errors.New("site does not exist")
+var ErrUnknownDevice = errors.New("device does not exist")
 
 type RegisterDeviceInput struct {
 	DeviceID     string
 	SiteID       string
 	InstallNotes *string
+	// InverterBrand/Model are optional metadata for the dashboard's
+	// device-registry filtering (see migrations/0016) — not used for
+	// anything ingestion-side; the datalogger, not this platform, is
+	// what actually needs to know a brand's register map.
+	InverterBrand *string
+	InverterModel *string
 }
 
 // RegisteredDevice carries the plaintext secret — the only time it ever
@@ -75,10 +82,12 @@ func (d *Devices) Register(ctx context.Context, actorUserID int64, in RegisterDe
 	}
 
 	device, err := d.q.CreateDevice(ctx, db.CreateDeviceParams{
-		DeviceID:     in.DeviceID,
-		SiteID:       pgtype.Text{String: in.SiteID, Valid: true},
-		SecretHash:   hash,
-		InstallNotes: textOrNull(in.InstallNotes),
+		DeviceID:      in.DeviceID,
+		SiteID:        pgtype.Text{String: in.SiteID, Valid: true},
+		SecretHash:    hash,
+		InstallNotes:  textOrNull(in.InstallNotes),
+		InverterBrand: textOrNull(in.InverterBrand),
+		InverterModel: textOrNull(in.InverterModel),
 	})
 	if err != nil {
 		return RegisteredDevice{}, err

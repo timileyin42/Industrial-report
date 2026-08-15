@@ -198,3 +198,115 @@ func TestFleetEmissionsAllUnconfiguredReturnsError(t *testing.T) {
 		t.Fatalf("expected ErrNoEmissionFactor when every country in the fleet is unconfigured, got %v", err)
 	}
 }
+
+// TestEmissionsUsesHistoricalFactorPerPeriod is the regression test for
+// the "a revised factor silently rewrites past CO2 figures" bug: two
+// telemetry days straddling a factor revision must each use the factor
+// that was actually in effect on that day, and the cumulative total must
+// be the sum of those correctly-factored days — never (total energy) ×
+// (whatever the current factor happens to be), which is what this
+// function used to do before factorAsOf existed.
+func TestEmissionsUsesHistoricalFactorPerPeriod(t *testing.T) {
+	q := testQueries(t)
+	pool := testRawPool(t)
+	ctx := context.Background()
+	sites := NewSites(q)
+	analytics := NewAnalytics(q)
+	emissions := NewEmissions(analytics, sites, q, "NG")
+
+	testCountry := "QF"
+	clearTestEmissionFactor(t, ctx, pool, testCountry)
+	t.Cleanup(func() { clearTestEmissionFactor(t, context.Background(), pool, testCountry) })
+
+	siteID := uniqueID("site-" + testCountry + "-")
+	site := createTestSite(t, ctx, sites, pool, CreateSiteInput{SiteID: siteID, Name: "Historical Factor Test", Timezone: "UTC", Country: testCountry, SystemSizeKW: ptrFloat(10)})
+	siteID = site.SiteID
+	deviceID := uniqueID("dev-" + testCountry + "-")
+	if _, err := pool.Exec(ctx, `INSERT INTO devices (device_id, site_id, secret_hash) VALUES ($1, $2, 'test-hash')`, deviceID, siteID); err != nil {
+		t.Fatalf("insert device: %v", err)
+	}
+
+	// Two distinct days, 10 days apart, each with its own start/end
+	// reading pair so each day has a real, non-zero energy delta.
+	oldDay := time.Now().UTC().Truncate(24 * time.Hour).Add(-20 * 24 * time.Hour)
+	newDay := time.Now().UTC().Truncate(24 * time.Hour).Add(-2 * 24 * time.Hour)
+	seedDay := func(day time.Time, energyKWh float64) {
+		if _, err := pool.Exec(ctx, `INSERT INTO telemetry (device_id, site_id, ts, power_kw, energy_kwh_total) VALUES ($1, $2, $3, 0, 0)`,
+			deviceID, siteID, day.Add(6*time.Hour)); err != nil {
+			t.Fatalf("insert telemetry (start): %v", err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO telemetry (device_id, site_id, ts, power_kw, energy_kwh_total) VALUES ($1, $2, $3, $4, $4)`,
+			deviceID, siteID, day.Add(18*time.Hour), energyKWh); err != nil {
+			t.Fatalf("insert telemetry (end): %v", err)
+		}
+	}
+	const oldDayEnergy, newDayEnergy = 10.0, 20.0
+	seedDay(oldDay, oldDayEnergy)
+	// energy_kwh_total is a cumulative counter across the whole device,
+	// not per-day — the second day's readings must continue climbing
+	// from the first day's end value, or its own delta would be wrong.
+	if _, err := pool.Exec(ctx, `INSERT INTO telemetry (device_id, site_id, ts, power_kw, energy_kwh_total) VALUES ($1, $2, $3, 0, $4)`,
+		deviceID, siteID, newDay.Add(6*time.Hour), oldDayEnergy); err != nil {
+		t.Fatalf("insert telemetry (day2 start): %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO telemetry (device_id, site_id, ts, power_kw, energy_kwh_total) VALUES ($1, $2, $3, $4, $4)`,
+		deviceID, siteID, newDay.Add(18*time.Hour), oldDayEnergy+newDayEnergy); err != nil {
+		t.Fatalf("insert telemetry (day2 end): %v", err)
+	}
+	refreshTelemetryDaily(t, pool)
+
+	const oldFactorKg, newFactorKg = 0.5, 0.9
+	if _, err := emissions.Set(ctx, 1, SetEmissionFactorInput{
+		KgCO2PerKWh: oldFactorKg, Country: testCountry, Source: "old", EffectiveFrom: oldDay.Add(-10 * 24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("set old factor: %v", err)
+	}
+	// Revised factor takes effect between the two days — oldDay must
+	// still use oldFactorKg, newDay must use newFactorKg.
+	if _, err := emissions.Set(ctx, 1, SetEmissionFactorInput{
+		KgCO2PerKWh: newFactorKg, Country: testCountry, Source: "revised", EffectiveFrom: oldDay.Add(5 * 24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("set revised factor: %v", err)
+	}
+
+	series, err := emissions.SiteEmissions(ctx, siteID, "daily", oldDay.Add(-24*time.Hour), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("site emissions: %v", err)
+	}
+
+	find := func(day time.Time) *EmissionPoint {
+		for i := range series.Points {
+			if series.Points[i].PeriodStart.Equal(day) {
+				return &series.Points[i]
+			}
+		}
+		return nil
+	}
+	oldPoint := find(oldDay)
+	newPoint := find(newDay)
+	if oldPoint == nil || newPoint == nil {
+		t.Fatalf("expected points for both %s and %s, got %+v", oldDay, newDay, series.Points)
+	}
+
+	wantOldKg := oldDayEnergy * oldFactorKg
+	wantNewKg := newDayEnergy * newFactorKg
+	if diff := oldPoint.KgCO2 - wantOldKg; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("old day: expected %.4f kg (old factor %.2f), got %.4f — historical factor not applied", wantOldKg, oldFactorKg, oldPoint.KgCO2)
+	}
+	if diff := newPoint.KgCO2 - wantNewKg; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("new day: expected %.4f kg (new factor %.2f), got %.4f", wantNewKg, newFactorKg, newPoint.KgCO2)
+	}
+
+	// The bug this test guards against: cumulative used to be
+	// (total energy) × (current factor), which would equal
+	// (oldDayEnergy+newDayEnergy) × newFactorKg here — a different,
+	// wrong number from the correctly per-period-summed total.
+	wantCumulativeTonnes := (wantOldKg + wantNewKg) / 1000
+	buggyTonnes := (oldDayEnergy + newDayEnergy) * newFactorKg / 1000
+	if diff := series.CumulativeTonnesCO2 - wantCumulativeTonnes; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("expected cumulative %.6f tonnes, got %.6f", wantCumulativeTonnes, series.CumulativeTonnesCO2)
+	}
+	if diff := series.CumulativeTonnesCO2 - buggyTonnes; diff > -1e-9 && diff < 1e-9 {
+		t.Fatalf("cumulative %.6f matches the old single-current-factor bug's answer %.6f — historical fix regressed", series.CumulativeTonnesCO2, buggyTonnes)
+	}
+}

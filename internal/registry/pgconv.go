@@ -39,6 +39,13 @@ func float8Ptr(f pgtype.Float8) *float64 {
 	return &f.Float64
 }
 
+func int2OrNull(f *float64) pgtype.Int2 {
+	if f == nil {
+		return pgtype.Int2{}
+	}
+	return pgtype.Int2{Int16: int16(*f), Valid: true}
+}
+
 func numericOrNull(f *float64) pgtype.Numeric {
 	var n pgtype.Numeric
 	if f == nil {

@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceDeviceLastSeen = `-- name: AdvanceDeviceLastSeen :exec
+UPDATE devices SET last_seen_at = $2 WHERE device_id = $1 AND (last_seen_at IS NULL OR last_seen_at < $2)
+`
+
+type AdvanceDeviceLastSeenParams struct {
+	DeviceID   string
+	LastSeenAt pgtype.Timestamptz
+}
+
+// Forward-only, same as the MQTT ingestor's step 7 — an out-of-order or
+// backfilled reading must never walk this backward.
+func (q *Queries) AdvanceDeviceLastSeen(ctx context.Context, arg AdvanceDeviceLastSeenParams) error {
+	_, err := q.db.Exec(ctx, advanceDeviceLastSeen, arg.DeviceID, arg.LastSeenAt)
+	return err
+}
+
 const countDevices = `-- name: CountDevices :one
 SELECT count(*)::bigint FROM devices
 `
@@ -39,16 +55,18 @@ func (q *Queries) CountOnlineDevices(ctx context.Context, cutoff pgtype.Timestam
 }
 
 const createDevice = `-- name: CreateDevice :one
-INSERT INTO devices (device_id, site_id, secret_hash, install_notes)
-VALUES ($1, $2, $3, $4)
-RETURNING device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at
+INSERT INTO devices (device_id, site_id, secret_hash, install_notes, inverter_brand, inverter_model)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at, inverter_brand, inverter_model
 `
 
 type CreateDeviceParams struct {
-	DeviceID     string
-	SiteID       pgtype.Text
-	SecretHash   string
-	InstallNotes pgtype.Text
+	DeviceID      string
+	SiteID        pgtype.Text
+	SecretHash    string
+	InstallNotes  pgtype.Text
+	InverterBrand pgtype.Text
+	InverterModel pgtype.Text
 }
 
 func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error) {
@@ -57,6 +75,8 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 		arg.SiteID,
 		arg.SecretHash,
 		arg.InstallNotes,
+		arg.InverterBrand,
+		arg.InverterModel,
 	)
 	var i Device
 	err := row.Scan(
@@ -69,6 +89,8 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 		&i.SecretLastRotatedAt,
 		&i.InstallNotes,
 		&i.LastContactAt,
+		&i.InverterBrand,
+		&i.InverterModel,
 	)
 	return i, err
 }
@@ -95,7 +117,7 @@ func (q *Queries) CurrentFleetGeneration(ctx context.Context, onlineCutoff pgtyp
 }
 
 const getDevice = `-- name: GetDevice :one
-SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at FROM devices WHERE device_id = $1
+SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at, inverter_brand, inverter_model FROM devices WHERE device_id = $1
 `
 
 func (q *Queries) GetDevice(ctx context.Context, deviceID string) (Device, error) {
@@ -111,12 +133,14 @@ func (q *Queries) GetDevice(ctx context.Context, deviceID string) (Device, error
 		&i.SecretLastRotatedAt,
 		&i.InstallNotes,
 		&i.LastContactAt,
+		&i.InverterBrand,
+		&i.InverterModel,
 	)
 	return i, err
 }
 
 const listDevices = `-- name: ListDevices :many
-SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at FROM devices
+SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at, inverter_brand, inverter_model FROM devices
 WHERE ($1::text IS NULL OR site_id = $1)
   AND (
     $2::timestamptz IS NULL
@@ -158,6 +182,8 @@ func (q *Queries) ListDevices(ctx context.Context, arg ListDevicesParams) ([]Dev
 			&i.SecretLastRotatedAt,
 			&i.InstallNotes,
 			&i.LastContactAt,
+			&i.InverterBrand,
+			&i.InverterModel,
 		); err != nil {
 			return nil, err
 		}
@@ -214,7 +240,7 @@ func (q *Queries) ListRecentFaultReadings(ctx context.Context, since pgtype.Time
 }
 
 const listRecentlyRevokedDevices = `-- name: ListRecentlyRevokedDevices :many
-SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at FROM devices
+SELECT device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at, inverter_brand, inverter_model FROM devices
 WHERE revoked_at IS NOT NULL AND revoked_at > $1::timestamptz
 ORDER BY revoked_at DESC
 `
@@ -240,6 +266,8 @@ func (q *Queries) ListRecentlyRevokedDevices(ctx context.Context, since pgtype.T
 			&i.SecretLastRotatedAt,
 			&i.InstallNotes,
 			&i.LastContactAt,
+			&i.InverterBrand,
+			&i.InverterModel,
 		); err != nil {
 			return nil, err
 		}
@@ -252,7 +280,7 @@ func (q *Queries) ListRecentlyRevokedDevices(ctx context.Context, since pgtype.T
 }
 
 const revokeDevice = `-- name: RevokeDevice :one
-UPDATE devices SET revoked_at = now() WHERE device_id = $1 RETURNING device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at
+UPDATE devices SET revoked_at = now() WHERE device_id = $1 RETURNING device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at, inverter_brand, inverter_model
 `
 
 func (q *Queries) RevokeDevice(ctx context.Context, deviceID string) (Device, error) {
@@ -268,12 +296,14 @@ func (q *Queries) RevokeDevice(ctx context.Context, deviceID string) (Device, er
 		&i.SecretLastRotatedAt,
 		&i.InstallNotes,
 		&i.LastContactAt,
+		&i.InverterBrand,
+		&i.InverterModel,
 	)
 	return i, err
 }
 
 const rotateDeviceSecret = `-- name: RotateDeviceSecret :one
-UPDATE devices SET secret_hash = $2, secret_last_rotated_at = now() WHERE device_id = $1 RETURNING device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at
+UPDATE devices SET secret_hash = $2, secret_last_rotated_at = now() WHERE device_id = $1 RETURNING device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at, inverter_brand, inverter_model
 `
 
 type RotateDeviceSecretParams struct {
@@ -294,6 +324,41 @@ func (q *Queries) RotateDeviceSecret(ctx context.Context, arg RotateDeviceSecret
 		&i.SecretLastRotatedAt,
 		&i.InstallNotes,
 		&i.LastContactAt,
+		&i.InverterBrand,
+		&i.InverterModel,
+	)
+	return i, err
+}
+
+const updateDeviceLastContact = `-- name: UpdateDeviceLastContact :one
+UPDATE devices SET last_contact_at = $2 WHERE device_id = $1 RETURNING device_id, site_id, secret_hash, revoked_at, last_seen_at, created_at, secret_last_rotated_at, install_notes, last_contact_at, inverter_brand, inverter_model
+`
+
+type UpdateDeviceLastContactParams struct {
+	DeviceID      string
+	LastContactAt pgtype.Timestamptz
+}
+
+// Unconditional reachability signal, same as the MQTT ingestor's step 2 —
+// "we heard from this device at all," independent of whether any of its
+// readings turned out to be valid. Used by the cloud-import path so a
+// cloud-linked device's online/offline status is derived the same way
+// an MQTT device's is.
+func (q *Queries) UpdateDeviceLastContact(ctx context.Context, arg UpdateDeviceLastContactParams) (Device, error) {
+	row := q.db.QueryRow(ctx, updateDeviceLastContact, arg.DeviceID, arg.LastContactAt)
+	var i Device
+	err := row.Scan(
+		&i.DeviceID,
+		&i.SiteID,
+		&i.SecretHash,
+		&i.RevokedAt,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.SecretLastRotatedAt,
+		&i.InstallNotes,
+		&i.LastContactAt,
+		&i.InverterBrand,
+		&i.InverterModel,
 	)
 	return i, err
 }

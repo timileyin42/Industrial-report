@@ -24,6 +24,20 @@ WHERE
 ORDER BY l.received_at DESC, l.id DESC
 LIMIT sqlc.arg('page_limit');
 
+-- name: CreateIngestionAuditRow :one
+-- Same "audit first, unconditionally, before any validation" discipline
+-- as cmd/ingestor/main.go's raw-pgx insert — used by the cloud-import
+-- path so a cloud-pushed reading gets the identical audit trail a real
+-- MQTT message does. prev_hash/entry_hash are filled in by
+-- trg_ingestion_audit_log_chain (migrations/0013), not here.
+INSERT INTO ingestion_audit_log (device_id, raw_payload) VALUES ($1, $2) RETURNING id;
+
+-- name: MarkIngestionAuditProcessed :exec
+UPDATE ingestion_audit_log SET processed = true WHERE id = $1;
+
+-- name: MarkIngestionAuditError :exec
+UPDATE ingestion_audit_log SET error = $2 WHERE id = $1;
+
 -- name: LastIngestionReceivedAt :one
 -- Most recent message the ingestor has seen, fleet-wide, regardless of
 -- whether it passed validation — the Dashboard's ingestion-pipeline

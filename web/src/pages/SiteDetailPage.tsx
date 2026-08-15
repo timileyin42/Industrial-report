@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { Factory, BarChart3, Pencil, Star } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
 import { KpiCard } from "../components/kpi/KpiCard";
+import { CircularProgress } from "../components/kpi/CircularProgress";
 import { LineChart } from "../components/charts/LineChart";
 import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
@@ -94,9 +95,24 @@ export function SiteDetailPage() {
   }
 
   const site = siteQuery.data;
-  const points = telemetryQuery.data?.items ?? [];
+  // The API returns telemetry newest-first (ORDER BY ts DESC — see
+  // ListTelemetryForSite), but the chart below needs chronological
+  // (oldest-first) order to plot time moving left-to-right, and "latest"
+  // needs to actually mean the most recent reading, not whichever one
+  // happens to be last in the page. Reversed once here so every
+  // downstream reference to `points` is already in the right order.
+  const points = [...(telemetryQuery.data?.items ?? [])].reverse();
   const latest = points[points.length - 1];
   const chartPoints = points.map((p, i) => ({ x: i, y: p.power_kw }));
+  // Hybrid-inverter fields (migrations/0016) — only present for devices
+  // that actually report them (Chisage/Felicity/Extra Power), so every
+  // panel below checks the LATEST reading, not just whether the field
+  // exists on the type, and renders nothing extra for a plain grid-tie
+  // device that never sends these.
+  const hasPV = points.some((p) => p.pv_power_kw != null);
+  const pvChartPoints = hasPV ? points.map((p, i) => ({ x: i, y: p.pv_power_kw ?? 0 })) : undefined;
+  const hasVoltageDetail =
+    latest && (latest.battery_voltage_v != null || latest.pv_voltage_v != null || latest.output_voltage_v != null);
 
   return (
     <>
@@ -209,7 +225,7 @@ export function SiteDetailPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
           <KpiCard
-            label="Current Power"
+            label={hasPV ? "AC Output" : "Current Power"}
             value={latest ? latest.power_kw.toFixed(1) : "—"}
             unit="kW"
             tone="primary"
@@ -225,10 +241,49 @@ export function SiteDetailPage() {
           />
         </div>
 
+        {/* Hybrid-inverter panel — battery SOC ring + voltage detail.
+            Only rendered when the latest reading actually carries these
+            fields (see migrations/0016); a plain grid-tie device shows
+            none of this, never a fabricated "0%" or "—" placeholder row. */}
+        {(latest?.battery_soc_pct != null || hasVoltageDetail) && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+            {latest?.battery_soc_pct != null && (
+              <div className="glass-card rounded-xl p-6 flex flex-col items-center justify-center">
+                <CircularProgress percent={latest.battery_soc_pct} color="#1a9c6b" label="Battery Charge" />
+              </div>
+            )}
+            {hasVoltageDetail && (
+              <div className="md:col-span-2 glass-card rounded-xl p-6">
+                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">System Voltages</span>
+                <div className="mt-4 grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="font-data-display-lg text-[22px] text-on-surface">
+                      {latest?.pv_voltage_v != null ? latest.pv_voltage_v.toFixed(1) : "—"}
+                    </p>
+                    <p className="text-[11px] text-on-surface-variant mt-1">Solar (PV), V</p>
+                  </div>
+                  <div>
+                    <p className="font-data-display-lg text-[22px] text-on-surface">
+                      {latest?.battery_voltage_v != null ? latest.battery_voltage_v.toFixed(1) : "—"}
+                    </p>
+                    <p className="text-[11px] text-on-surface-variant mt-1">Battery, V</p>
+                  </div>
+                  <div>
+                    <p className="font-data-display-lg text-[22px] text-on-surface">
+                      {latest?.output_voltage_v != null ? latest.output_voltage_v.toFixed(1) : "—"}
+                    </p>
+                    <p className="text-[11px] text-on-surface-variant mt-1">Output, V</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="glass-card rounded-2xl overflow-hidden">
           <div className="p-6 border-b border-outline-variant/60 flex justify-between items-center">
             <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-              Power Output
+              {hasPV ? "Solar Output vs. AC Output" : "Power Output"}
             </span>
           </div>
           <div className="h-[260px] p-6">
@@ -239,6 +294,8 @@ export function SiteDetailPage() {
                 title="No telemetry yet"
                 body="This site hasn't reported any readings yet. Once its device starts publishing, data will appear here."
               />
+            ) : hasPV ? (
+              <LineChart points={pvChartPoints!} color="#f2a93b" label="Solar (PV)" points2={chartPoints} color2="#2f8fe0" label2="AC Output" />
             ) : (
               <LineChart points={chartPoints} color="#f2a93b" />
             )}

@@ -49,6 +49,8 @@ type deviceResponse struct {
 	CreatedAt           time.Time  `json:"created_at"`
 	SecretLastRotatedAt time.Time  `json:"secret_last_rotated_at"`
 	InstallNotes        *string    `json:"install_notes,omitempty"`
+	InverterBrand       *string    `json:"inverter_brand,omitempty"`
+	InverterModel       *string    `json:"inverter_model,omitempty"`
 }
 
 func toDeviceResponse(d db.Device) deviceResponse {
@@ -60,6 +62,8 @@ func toDeviceResponse(d db.Device) deviceResponse {
 		CreatedAt:           d.CreatedAt.Time,
 		SecretLastRotatedAt: d.SecretLastRotatedAt.Time,
 		InstallNotes:        textPtr(d.InstallNotes),
+		InverterBrand:       textPtr(d.InverterBrand),
+		InverterModel:       textPtr(d.InverterModel),
 	}
 }
 

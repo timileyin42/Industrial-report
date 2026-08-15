@@ -13,3 +13,12 @@ RETURNING *;
 
 -- name: ListEmissionFactorHistory :many
 SELECT * FROM grid_emission_factor WHERE country = $1 ORDER BY effective_from DESC LIMIT $2;
+
+-- name: ListAllEmissionFactorsForCountry :many
+-- Unbounded on purpose, unlike ListEmissionFactorHistory above — this
+-- feeds per-period historical lookup (Emissions.factorAsOf), which needs
+-- every revision ever set for the country, not a capped "recent N" list.
+-- Safe to leave unbounded: this table only grows via a rare admin action
+-- (Emissions.Set), never per-reading, so it stays tiny for the table's
+-- entire lifetime — nothing like telemetry's scale.
+SELECT * FROM grid_emission_factor WHERE country = $1 ORDER BY effective_from ASC;

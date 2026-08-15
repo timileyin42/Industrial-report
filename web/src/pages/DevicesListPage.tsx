@@ -61,6 +61,18 @@ export function DevicesListPage() {
     },
     { header: "Mapped Site", render: (d) => d.site_id ?? "—" },
     {
+      header: "Brand",
+      render: (d) =>
+        d.inverter_brand ? (
+          <div>
+            <p className="capitalize">{d.inverter_brand.replace("_", " ")}</p>
+            {d.inverter_model && <p className="text-[11px] text-on-surface-variant">{d.inverter_model}</p>}
+          </div>
+        ) : (
+          "—"
+        ),
+    },
+    {
       header: "Status",
       render: (d) => <StatusBadge status={deriveDeviceStatus(d.last_seen_at, d.revoked_at)} />,
     },

@@ -23,6 +23,13 @@ func float8Ptr(f pgtype.Float8) *float64 {
 	return &f.Float64
 }
 
+func int2Ptr(i pgtype.Int2) *int16 {
+	if !i.Valid {
+		return nil
+	}
+	return &i.Int16
+}
+
 func numericPtr(n pgtype.Numeric) *float64 {
 	if !n.Valid {
 		return nil

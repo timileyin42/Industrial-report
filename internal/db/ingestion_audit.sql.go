@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createIngestionAuditRow = `-- name: CreateIngestionAuditRow :one
+INSERT INTO ingestion_audit_log (device_id, raw_payload) VALUES ($1, $2) RETURNING id
+`
+
+type CreateIngestionAuditRowParams struct {
+	DeviceID   string
+	RawPayload []byte
+}
+
+// Same "audit first, unconditionally, before any validation" discipline
+// as cmd/ingestor/main.go's raw-pgx insert — used by the cloud-import
+// path so a cloud-pushed reading gets the identical audit trail a real
+// MQTT message does. prev_hash/entry_hash are filled in by
+// trg_ingestion_audit_log_chain (migrations/0013), not here.
+func (q *Queries) CreateIngestionAuditRow(ctx context.Context, arg CreateIngestionAuditRowParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createIngestionAuditRow, arg.DeviceID, arg.RawPayload)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lastIngestionReceivedAt = `-- name: LastIngestionReceivedAt :one
 SELECT max(received_at)::timestamptz AS last_received_at FROM ingestion_audit_log
 `
@@ -109,4 +130,27 @@ func (q *Queries) ListIngestionAuditLog(ctx context.Context, arg ListIngestionAu
 		return nil, err
 	}
 	return items, nil
+}
+
+const markIngestionAuditError = `-- name: MarkIngestionAuditError :exec
+UPDATE ingestion_audit_log SET error = $2 WHERE id = $1
+`
+
+type MarkIngestionAuditErrorParams struct {
+	ID    int64
+	Error pgtype.Text
+}
+
+func (q *Queries) MarkIngestionAuditError(ctx context.Context, arg MarkIngestionAuditErrorParams) error {
+	_, err := q.db.Exec(ctx, markIngestionAuditError, arg.ID, arg.Error)
+	return err
+}
+
+const markIngestionAuditProcessed = `-- name: MarkIngestionAuditProcessed :exec
+UPDATE ingestion_audit_log SET processed = true WHERE id = $1
+`
+
+func (q *Queries) MarkIngestionAuditProcessed(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markIngestionAuditProcessed, id)
+	return err
 }

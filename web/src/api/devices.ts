@@ -13,6 +13,8 @@ export interface RegisterDeviceInput {
   device_id: string;
   site_id: string;
   install_notes?: string;
+  inverter_brand?: string;
+  inverter_model?: string;
 }
 
 export async function listDevices(

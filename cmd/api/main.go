@@ -90,6 +90,7 @@ func main() {
 	// of the notification (see DemoRequests.Submit), same no-op-if-unset
 	// pattern as RESEND_API_KEY.
 	demoRequests := registry.NewDemoRequests(queries, sender, os.Getenv("COMPANY_CONTACT_EMAIL"))
+	cloudImport := registry.NewCloudImport(queries)
 
 	e := httpapi.NewRouter(httpapi.Deps{
 		Sites:          sites,
@@ -109,6 +110,7 @@ func main() {
 		Alerts:         alerts,
 		Sandbox:        sandbox,
 		DemoRequests:   demoRequests,
+		CloudImport:    cloudImport,
 		Issuer:         auth.NewTokenIssuer(jwtSecret),
 	})
 

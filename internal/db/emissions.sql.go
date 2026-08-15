@@ -70,6 +70,44 @@ func (q *Queries) GetCurrentEmissionFactor(ctx context.Context, country string) 
 	return i, err
 }
 
+const listAllEmissionFactorsForCountry = `-- name: ListAllEmissionFactorsForCountry :many
+SELECT id, kg_co2_per_kwh, country, source, effective_from, created_at, created_by_user_id FROM grid_emission_factor WHERE country = $1 ORDER BY effective_from ASC
+`
+
+// Unbounded on purpose, unlike ListEmissionFactorHistory above — this
+// feeds per-period historical lookup (Emissions.factorAsOf), which needs
+// every revision ever set for the country, not a capped "recent N" list.
+// Safe to leave unbounded: this table only grows via a rare admin action
+// (Emissions.Set), never per-reading, so it stays tiny for the table's
+// entire lifetime — nothing like telemetry's scale.
+func (q *Queries) ListAllEmissionFactorsForCountry(ctx context.Context, country string) ([]GridEmissionFactor, error) {
+	rows, err := q.db.Query(ctx, listAllEmissionFactorsForCountry, country)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GridEmissionFactor
+	for rows.Next() {
+		var i GridEmissionFactor
+		if err := rows.Scan(
+			&i.ID,
+			&i.KgCo2PerKwh,
+			&i.Country,
+			&i.Source,
+			&i.EffectiveFrom,
+			&i.CreatedAt,
+			&i.CreatedByUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEmissionFactorHistory = `-- name: ListEmissionFactorHistory :many
 SELECT id, kg_co2_per_kwh, country, source, effective_from, created_at, created_by_user_id FROM grid_emission_factor WHERE country = $1 ORDER BY effective_from DESC LIMIT $2
 `

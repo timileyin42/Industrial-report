@@ -11,17 +11,27 @@ import (
 )
 
 type Querier interface {
+	// Forward-only, same as the MQTT ingestor's step 7 — an out-of-order or
+	// backfilled reading must never walk this backward.
+	AdvanceDeviceLastSeen(ctx context.Context, arg AdvanceDeviceLastSeenParams) error
 	CountDevices(ctx context.Context) (int64, error)
 	// cutoff is computed in Go from ONLINE_THRESHOLD_MINUTES, never a SQL
 	// literal, so the threshold is configurable without a query change.
 	// Filters on last_contact_at (reachability), not last_seen_at (reading
 	// freshness) — see internal/registry's two-signal online/data_gap model.
 	CountOnlineDevices(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
+	CreateCloudImportToken(ctx context.Context, arg CreateCloudImportTokenParams) (CloudImportToken, error)
 	CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error)
 	// Append-only — never UPDATE. Past reports must stay reproducible even if
 	// the official factor changes later.
 	CreateEmissionFactor(ctx context.Context, arg CreateEmissionFactorParams) (GridEmissionFactor, error)
 	CreateExportJob(ctx context.Context, arg CreateExportJobParams) (ExportJob, error)
+	// Same "audit first, unconditionally, before any validation" discipline
+	// as cmd/ingestor/main.go's raw-pgx insert — used by the cloud-import
+	// path so a cloud-pushed reading gets the identical audit trail a real
+	// MQTT message does. prev_hash/entry_hash are filled in by
+	// trg_ingestion_audit_log_chain (migrations/0013), not here.
+	CreateIngestionAuditRow(ctx context.Context, arg CreateIngestionAuditRowParams) (int64, error)
 	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
 	CreatePasswordResetToken(ctx context.Context, arg CreatePasswordResetTokenParams) (PasswordResetToken, error)
 	CreateSandboxReading(ctx context.Context, arg CreateSandboxReadingParams) error
@@ -56,6 +66,12 @@ type Querier interface {
 	// 409, never a fabricated default.
 	GetCurrentEmissionFactor(ctx context.Context, country string) (GridEmissionFactor, error)
 	GetDevice(ctx context.Context, deviceID string) (Device, error)
+	// Same lookup cmd/ingestor/main.go runs as raw pgx on the MQTT hot path
+	// (AGENTS.md's stack-split rationale doesn't apply here — this serves an
+	// infrequent HTTP webhook, not a high-frequency broker subscription) —
+	// used by the cloud-import path so both ingestion routes apply the exact
+	// same revoked-device check and site-specific plausibility ceiling.
+	GetDeviceWithSiteContext(ctx context.Context, deviceID string) (GetDeviceWithSiteContextRow, error)
 	// The first operator account ever created in this environment — i.e.
 	// the one created via cmd/seed-operator, not necessarily still the only
 	// operator. Used to route marketing-site notifications (demo requests)
@@ -78,17 +94,30 @@ type Querier interface {
 	GetSite(ctx context.Context, siteID string) (Site, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	InsertTelemetryReading(ctx context.Context, arg InsertTelemetryReadingParams) (int64, error)
 	// Most recent message the ingestor has seen, fleet-wide, regardless of
 	// whether it passed validation — the Dashboard's ingestion-pipeline
 	// status widget uses "how long ago was that" as its health signal, not
 	// a synthetic uptime percentage this platform has no way to compute.
 	LastIngestionReceivedAt(ctx context.Context) (pgtype.Timestamptz, error)
+	// Bounded to one device's own tokens (there's realistically at most one
+	// active, occasionally two mid-rotation) — verified by hash comparison
+	// in Go, same pattern as invites/password-reset tokens, since a token
+	// isn't looked up by its plaintext value.
+	ListActiveCloudImportTokensForDevice(ctx context.Context, deviceID string) ([]CloudImportToken, error)
 	// Small, TTL-bounded result set — see migrations/0007's comment on why
 	// token_hash isn't looked up by equality.
 	ListActiveInvites(ctx context.Context) ([]Invite, error)
 	// Same small, TTL-bounded scan-and-bcrypt-compare pattern as
 	// ListActiveInvites — see migrations/0007's comment.
 	ListActivePasswordResetTokens(ctx context.Context) ([]PasswordResetToken, error)
+	// Unbounded on purpose, unlike ListEmissionFactorHistory above — this
+	// feeds per-period historical lookup (Emissions.factorAsOf), which needs
+	// every revision ever set for the country, not a capped "recent N" list.
+	// Safe to leave unbounded: this table only grows via a rare admin action
+	// (Emissions.Set), never per-reading, so it stays tiny for the table's
+	// entire lifetime — nothing like telemetry's scale.
+	ListAllEmissionFactorsForCountry(ctx context.Context, country string) ([]GridEmissionFactor, error)
 	// Distinct cohorts currently in use, with aggregated site count/capacity
 	// — cohort_id is a free-text grouping field on sites (no dedicated
 	// cohorts table), so this is the closest thing to a "list cohorts"
@@ -165,11 +194,22 @@ type Querier interface {
 	ListUserActionAuditLog(ctx context.Context, arg ListUserActionAuditLogParams) ([]ListUserActionAuditLogRow, error)
 	// Keyset pagination, same convention as ListSites/ListDevices.
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	MarkCloudImportTokenUsed(ctx context.Context, id int64) error
 	MarkExportJobCompleted(ctx context.Context, arg MarkExportJobCompletedParams) error
 	MarkExportJobFailed(ctx context.Context, arg MarkExportJobFailedParams) error
 	MarkExportJobRunning(ctx context.Context, id int64) error
+	MarkIngestionAuditError(ctx context.Context, arg MarkIngestionAuditErrorParams) error
+	MarkIngestionAuditProcessed(ctx context.Context, id int64) error
 	MarkInviteAccepted(ctx context.Context, id int64) error
 	MarkPasswordResetTokenUsed(ctx context.Context, id int64) error
+	// Mirrors cmd/ingestor/main.go's previousEnergyByTS — chronological
+	// lookup by ts, never by insertion order, so reset detection stays
+	// correct under out-of-order/backfilled arrival (see domain.
+	// DetectEnergyReset's own comment on why this matters).
+	PreviousEnergyBeforeTS(ctx context.Context, arg PreviousEnergyBeforeTSParams) (float64, error)
+	// Issuing a new token revokes any previous one for the same device — one
+	// active credential at a time, same model as device secret rotation.
+	RevokeCloudImportTokensForDevice(ctx context.Context, deviceID string) error
 	RevokeDevice(ctx context.Context, deviceID string) (Device, error)
 	RotateDeviceSecret(ctx context.Context, arg RotateDeviceSecretParams) (Device, error)
 	SetSitePrimary(ctx context.Context, siteID string) (Site, error)
@@ -182,6 +222,12 @@ type Querier interface {
 	// real backstop guaranteeing at most one primary site even without an
 	// explicit transaction wrapping both statements.
 	UnsetAllPrimarySites(ctx context.Context) error
+	// Unconditional reachability signal, same as the MQTT ingestor's step 2 —
+	// "we heard from this device at all," independent of whether any of its
+	// readings turned out to be valid. Used by the cloud-import path so a
+	// cloud-linked device's online/offline status is derived the same way
+	// an MQTT device's is.
+	UpdateDeviceLastContact(ctx context.Context, arg UpdateDeviceLastContactParams) (Device, error)
 	// Corrects a site's country after creation — needed because the
 	// migration backfilling this column had to guess 'NG' for every
 	// pre-existing row (see migrations/0010_site_country.sql).

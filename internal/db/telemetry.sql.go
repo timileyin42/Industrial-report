@@ -11,8 +11,89 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getDeviceWithSiteContext = `-- name: GetDeviceWithSiteContext :one
+SELECT d.site_id, d.revoked_at, s.system_size_kw, s.timezone
+FROM devices d JOIN sites s ON s.site_id = d.site_id
+WHERE d.device_id = $1
+`
+
+type GetDeviceWithSiteContextRow struct {
+	SiteID       pgtype.Text
+	RevokedAt    pgtype.Timestamptz
+	SystemSizeKw pgtype.Numeric
+	Timezone     string
+}
+
+// Same lookup cmd/ingestor/main.go runs as raw pgx on the MQTT hot path
+// (AGENTS.md's stack-split rationale doesn't apply here — this serves an
+// infrequent HTTP webhook, not a high-frequency broker subscription) —
+// used by the cloud-import path so both ingestion routes apply the exact
+// same revoked-device check and site-specific plausibility ceiling.
+func (q *Queries) GetDeviceWithSiteContext(ctx context.Context, deviceID string) (GetDeviceWithSiteContextRow, error) {
+	row := q.db.QueryRow(ctx, getDeviceWithSiteContext, deviceID)
+	var i GetDeviceWithSiteContextRow
+	err := row.Scan(
+		&i.SiteID,
+		&i.RevokedAt,
+		&i.SystemSizeKw,
+		&i.Timezone,
+	)
+	return i, err
+}
+
+const insertTelemetryReading = `-- name: InsertTelemetryReading :execrows
+INSERT INTO telemetry (
+    device_id, site_id, ts, power_kw, energy_kwh_total, voltage_v, status, provenance, quality_flags, rssi,
+    pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+ON CONFLICT (device_id, ts) DO NOTHING
+`
+
+type InsertTelemetryReadingParams struct {
+	DeviceID        string
+	SiteID          string
+	Ts              pgtype.Timestamptz
+	PowerKw         float64
+	EnergyKwhTotal  float64
+	VoltageV        pgtype.Float8
+	Status          ReadingStatus
+	Provenance      ProvenanceType
+	QualityFlags    []string
+	Rssi            pgtype.Int4
+	PvPowerKw       pgtype.Float8
+	BatterySocPct   pgtype.Int2
+	BatteryVoltageV pgtype.Float8
+	PvVoltageV      pgtype.Float8
+	OutputVoltageV  pgtype.Float8
+}
+
+func (q *Queries) InsertTelemetryReading(ctx context.Context, arg InsertTelemetryReadingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertTelemetryReading,
+		arg.DeviceID,
+		arg.SiteID,
+		arg.Ts,
+		arg.PowerKw,
+		arg.EnergyKwhTotal,
+		arg.VoltageV,
+		arg.Status,
+		arg.Provenance,
+		arg.QualityFlags,
+		arg.Rssi,
+		arg.PvPowerKw,
+		arg.BatterySocPct,
+		arg.BatteryVoltageV,
+		arg.PvVoltageV,
+		arg.OutputVoltageV,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listTelemetryForSite = `-- name: ListTelemetryForSite :many
-SELECT ts, power_kw, energy_kwh_total, voltage_v, status, device_id, rssi
+SELECT ts, power_kw, energy_kwh_total, voltage_v, status, device_id, rssi,
+       pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v
 FROM telemetry
 WHERE site_id = $1
   AND ($2::timestamptz IS NULL OR ts >= $2)
@@ -35,13 +116,18 @@ type ListTelemetryForSiteParams struct {
 }
 
 type ListTelemetryForSiteRow struct {
-	Ts             pgtype.Timestamptz
-	PowerKw        float64
-	EnergyKwhTotal float64
-	VoltageV       pgtype.Float8
-	Status         ReadingStatus
-	DeviceID       string
-	Rssi           pgtype.Int4
+	Ts              pgtype.Timestamptz
+	PowerKw         float64
+	EnergyKwhTotal  float64
+	VoltageV        pgtype.Float8
+	Status          ReadingStatus
+	DeviceID        string
+	Rssi            pgtype.Int4
+	PvPowerKw       pgtype.Float8
+	BatterySocPct   pgtype.Int2
+	BatteryVoltageV pgtype.Float8
+	PvVoltageV      pgtype.Float8
+	OutputVoltageV  pgtype.Float8
 }
 
 // Keyset pagination on (ts, device_id) DESC. cursor_ts NULL means first page.
@@ -70,6 +156,11 @@ func (q *Queries) ListTelemetryForSite(ctx context.Context, arg ListTelemetryFor
 			&i.Status,
 			&i.DeviceID,
 			&i.Rssi,
+			&i.PvPowerKw,
+			&i.BatterySocPct,
+			&i.BatteryVoltageV,
+			&i.PvVoltageV,
+			&i.OutputVoltageV,
 		); err != nil {
 			return nil, err
 		}
@@ -79,4 +170,24 @@ func (q *Queries) ListTelemetryForSite(ctx context.Context, arg ListTelemetryFor
 		return nil, err
 	}
 	return items, nil
+}
+
+const previousEnergyBeforeTS = `-- name: PreviousEnergyBeforeTS :one
+SELECT energy_kwh_total FROM telemetry WHERE device_id = $1 AND ts < $2 ORDER BY ts DESC LIMIT 1
+`
+
+type PreviousEnergyBeforeTSParams struct {
+	DeviceID string
+	Ts       pgtype.Timestamptz
+}
+
+// Mirrors cmd/ingestor/main.go's previousEnergyByTS — chronological
+// lookup by ts, never by insertion order, so reset detection stays
+// correct under out-of-order/backfilled arrival (see domain.
+// DetectEnergyReset's own comment on why this matters).
+func (q *Queries) PreviousEnergyBeforeTS(ctx context.Context, arg PreviousEnergyBeforeTSParams) (float64, error) {
+	row := q.db.QueryRow(ctx, previousEnergyBeforeTS, arg.DeviceID, arg.Ts)
+	var energy_kwh_total float64
+	err := row.Scan(&energy_kwh_total)
+	return energy_kwh_total, err
 }

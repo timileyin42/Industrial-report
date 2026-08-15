@@ -43,6 +43,12 @@ export const DeviceSchema = z.object({
   created_at: z.string(),
   secret_last_rotated_at: z.string(),
   install_notes: z.string().nullable().optional(),
+  // Optional metadata for the household hybrid-inverter field deployment
+  // (Chisage/Felicity/Extra Power) — see migrations/0016. Never required;
+  // absent for any device registered before this or that isn't a hybrid
+  // inverter at all.
+  inverter_brand: z.string().nullable().optional(),
+  inverter_model: z.string().nullable().optional(),
 });
 export type Device = z.infer<typeof DeviceSchema>;
 
@@ -84,6 +90,15 @@ export const TelemetryPointSchema = z.object({
   // for diagnostics." Nothing renders this yet; added for completeness
   // alongside the backend finally reading it out of incoming payloads.
   rssi: z.number().nullable().optional(),
+  // Hybrid-inverter fields (Chisage/Felicity/Extra Power field
+  // deployment — see migrations/0016). Absent for any reading from a
+  // non-hybrid device or one that predates these columns — never
+  // fabricated when missing.
+  pv_power_kw: z.number().nullable().optional(),
+  battery_soc_pct: z.number().nullable().optional(),
+  battery_voltage_v: z.number().nullable().optional(),
+  pv_voltage_v: z.number().nullable().optional(),
+  output_voltage_v: z.number().nullable().optional(),
 });
 export type TelemetryPoint = z.infer<typeof TelemetryPointSchema>;
 

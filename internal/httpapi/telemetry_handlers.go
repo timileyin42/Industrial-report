@@ -17,6 +17,13 @@ type telemetryPointResponse struct {
 	VoltageV  *float64  `json:"voltage_v,omitempty"`
 	Status    string    `json:"status"`
 	RSSI      *int32    `json:"rssi,omitempty"`
+	// Hybrid-inverter fields — see migrations/0016. Omitted for any
+	// reading that predates them or came from a non-hybrid device.
+	PVPowerKW       *float64 `json:"pv_power_kw,omitempty"`
+	BatterySOCPct   *int16   `json:"battery_soc_pct,omitempty"`
+	BatteryVoltageV *float64 `json:"battery_voltage_v,omitempty"`
+	PVVoltageV      *float64 `json:"pv_voltage_v,omitempty"`
+	OutputVoltageV  *float64 `json:"output_voltage_v,omitempty"`
 }
 
 // listTelemetry replaces Phase 0's unbounded 24h scan with an auth-gated,
@@ -50,13 +57,18 @@ func (h *handlers) listTelemetry(c echo.Context) error {
 			rssi = &r.Rssi.Int32
 		}
 		items = append(items, telemetryPointResponse{
-			Timestamp: r.Ts.Time,
-			DeviceID:  r.DeviceID,
-			PowerKW:   r.PowerKw,
-			EnergyKWh: r.EnergyKwhTotal,
-			VoltageV:  float8Ptr(r.VoltageV),
-			Status:    string(r.Status),
-			RSSI:      rssi,
+			Timestamp:       r.Ts.Time,
+			DeviceID:        r.DeviceID,
+			PowerKW:         r.PowerKw,
+			EnergyKWh:       r.EnergyKwhTotal,
+			VoltageV:        float8Ptr(r.VoltageV),
+			Status:          string(r.Status),
+			RSSI:            rssi,
+			PVPowerKW:       float8Ptr(r.PvPowerKw),
+			BatterySOCPct:   int2Ptr(r.BatterySocPct),
+			BatteryVoltageV: float8Ptr(r.BatteryVoltageV),
+			PVVoltageV:      float8Ptr(r.PvVoltageV),
+			OutputVoltageV:  float8Ptr(r.OutputVoltageV),
 		})
 	}
 	return c.JSON(http.StatusOK, pageResponse[telemetryPointResponse]{Items: items, NextCursor: next})

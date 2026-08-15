@@ -34,6 +34,7 @@ type Deps struct {
 	Alerts         *registry.Alerts
 	Sandbox        *registry.Sandbox
 	DemoRequests   *registry.DemoRequests
+	CloudImport    *registry.CloudImport
 	Issuer         auth.TokenIssuer
 }
 
@@ -59,6 +60,10 @@ func NewRouter(deps Deps) *echo.Echo {
 	// endpoint sends real email per request, an abuse vector if left
 	// unlimited.
 	demoRequestLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
+	// Cloud-import readings arrive in small, infrequent batches (a
+	// scheduled script or webhook, not a live device stream) — same rate
+	// class as the other public write endpoints, not the MQTT hot path.
+	cloudImportLimiter := middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(1))
 
 	v1 := e.Group("/v1")
 
@@ -80,6 +85,13 @@ func NewRouter(deps Deps) *echo.Echo {
 	// Demo requests — the marketing site's "Request a Demo" CTA/contact
 	// form. Public, no login, same reasoning as sandbox above.
 	v1.POST("/demo-requests", h.createDemoRequest, demoRequestLimiter)
+
+	// Cloud import — the vendor-agnostic alternative to MQTT for a device
+	// whose inverter only reports into a manufacturer's cloud app. Public
+	// (no JWT — the caller is external glue, not a dashboard user),
+	// authenticated instead by the device's own bearer token inside the
+	// handler. Rate-limited like every other public write endpoint above.
+	v1.POST("/cloud-import/:device_id/readings", h.submitCloudReadings, cloudImportLimiter)
 
 	// Authenticated
 	authed := v1.Group("", auth.RequireAuth(deps.Issuer))
@@ -107,6 +119,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/devices/:device_id/status", h.deviceStatus, auth.RequireSiteAccess(h.resolveSiteFromDeviceParam))
 	authed.POST("/devices/:device_id/revoke", h.revokeDevice, operatorOnly)
 	authed.POST("/devices/:device_id/rotate-secret", h.rotateDeviceSecret, operatorOnly)
+	authed.POST("/devices/:device_id/cloud-import-token", h.issueCloudImportToken, operatorOnly)
 
 	authed.GET("/fleet/summary", h.fleetSummary, operatorOnly)
 	authed.GET("/fleet/health", h.fleetHealth, operatorOnly)

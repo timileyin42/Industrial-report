@@ -77,6 +77,45 @@ func (e *Emissions) Current(ctx context.Context, country string) (EmissionFactor
 	return toEmissionFactor(factor), nil
 }
 
+// allFactorsAscending returns every factor ever set for a country, oldest
+// first — feeds factorAsOf's per-period lookup. Distinct from the
+// exported History (capped, newest-first, for the settings screen's
+// audit list) since correctness here depends on having the *complete*
+// set, not a recent sample.
+func (e *Emissions) allFactorsAscending(ctx context.Context, country string) ([]EmissionFactor, error) {
+	rows, err := e.q.ListAllEmissionFactorsForCountry(ctx, country)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]EmissionFactor, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toEmissionFactor(r))
+	}
+	return out, nil
+}
+
+// factorAsOf picks the factor that was actually in effect at asOf — the
+// most recent one with EffectiveFrom <= asOf — so a later revision never
+// silently rewrites CO2 figures for periods before it existed. factors
+// must be sorted ascending by EffectiveFrom (allFactorsAscending's order).
+//
+// If asOf predates every factor on record (only possible for energy from
+// before this platform's very first configured factor), this falls back
+// to the oldest factor available rather than returning "unconfigured" —
+// a documented approximation, not a silent guess: there's no way to know
+// what the true historical rate would have been, and using the oldest
+// known official value is a defensible floor for that edge case.
+func factorAsOf(factors []EmissionFactor, asOf time.Time) EmissionFactor {
+	best := factors[0]
+	for _, f := range factors {
+		if f.EffectiveFrom.After(asOf) {
+			break
+		}
+		best = f
+	}
+	return best
+}
+
 func (e *Emissions) History(ctx context.Context, country string, limit int) ([]EmissionFactor, error) {
 	if country == "" {
 		country = e.defaultCountry
@@ -181,11 +220,15 @@ func (e *Emissions) SiteEmissions(ctx context.Context, siteID, period string, fr
 	if err != nil {
 		return EmissionsSeries{}, err
 	}
+	factors, err := e.allFactorsAscending(ctx, site.Country)
+	if err != nil {
+		return EmissionsSeries{}, err
+	}
 	energy, err := e.analytics.SiteEnergy(ctx, siteID, period, from, to)
 	if err != nil {
 		return EmissionsSeries{}, err
 	}
-	return e.toSeries(factor, energy), nil
+	return e.toSeries(factor, factors, energy), nil
 }
 
 // FleetEmissions sums CO2 avoided across every country represented in the
@@ -227,7 +270,11 @@ func (e *Emissions) FleetEmissions(ctx context.Context, cohortID *string, period
 		}
 		configuredCount++
 
-		series := e.toSeries(factor, byCountry[country])
+		factors, err := e.allFactorsAscending(ctx, country)
+		if err != nil {
+			return EmissionsSeries{}, err
+		}
+		series := e.toSeries(factor, factors, byCountry[country])
 		breakdown = append(breakdown, CountryEmissions{Country: country, Factor: factor, CumulativeTonnesCO2: series.CumulativeTonnesCO2})
 		totalTonnes += series.CumulativeTonnesCO2
 
@@ -262,12 +309,28 @@ func (e *Emissions) FleetEmissions(ctx context.Context, cohortID *string, period
 	return result, nil
 }
 
-func (e *Emissions) toSeries(factor EmissionFactor, energy EnergySeries) EmissionsSeries {
-	series := EmissionsSeries{Factor: factor, Points: make([]EmissionPoint, 0, len(energy.Points))}
+// toSeries computes CO2 per period using the factor that was actually in
+// effect at each period's own date (factorAsOf), not the single current
+// one applied uniformly across all of history — see factorAsOf's comment
+// for why that distinction matters. currentFactor is still carried on the
+// result purely for display (EmissionsSeries.Factor — "what's configured
+// right now"); it plays no part in the actual math below.
+//
+// CumulativeTonnesCO2 is the sum of each period's own correctly-factored
+// kg, not currentFactor times energy.CumulativeKWh — that single-factor
+// shortcut is exactly the bug this function exists to fix: it would make
+// a revised factor retroactively change historical CO2-avoided totals
+// every time it's queried, even for energy generated under an earlier,
+// different factor.
+func (e *Emissions) toSeries(currentFactor EmissionFactor, factors []EmissionFactor, energy EnergySeries) EmissionsSeries {
+	series := EmissionsSeries{Factor: currentFactor, Points: make([]EmissionPoint, 0, len(energy.Points))}
+	var cumulativeKg float64
 	for _, p := range energy.Points {
+		factor := factorAsOf(factors, p.PeriodStart)
 		kg := p.EnergyKWh * factor.KgCO2PerKWh
+		cumulativeKg += kg
 		series.Points = append(series.Points, EmissionPoint{PeriodStart: p.PeriodStart, EnergyKWh: p.EnergyKWh, KgCO2: kg})
 	}
-	series.CumulativeTonnesCO2 = energy.CumulativeKWh * factor.KgCO2PerKWh / 1000
+	series.CumulativeTonnesCO2 = cumulativeKg / 1000
 	return series
 }

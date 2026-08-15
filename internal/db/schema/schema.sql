@@ -35,7 +35,9 @@ CREATE TABLE devices (
     created_at             timestamptz NOT NULL DEFAULT now(),
     secret_last_rotated_at timestamptz NOT NULL DEFAULT now(),
     install_notes          text,
-    last_contact_at        timestamptz
+    last_contact_at        timestamptz,
+    inverter_brand         text,
+    inverter_model         text
 );
 
 CREATE TYPE provenance_type AS ENUM ('metered', 'estimated', 'backfilled');
@@ -53,7 +55,21 @@ CREATE TABLE telemetry (
     provenance        provenance_type NOT NULL DEFAULT 'metered',
     received_at       timestamptz NOT NULL DEFAULT now(),
     quality_flags     text[] NOT NULL DEFAULT '{}',
+    pv_power_kw       double precision,
+    battery_soc_pct   smallint,
+    battery_voltage_v double precision,
+    pv_voltage_v      double precision,
+    output_voltage_v  double precision,
     PRIMARY KEY (device_id, ts)
+);
+
+CREATE TABLE cloud_import_tokens (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    device_id    text NOT NULL REFERENCES devices(device_id),
+    token_hash   text NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    last_used_at timestamptz,
+    revoked_at   timestamptz
 );
 
 CREATE TABLE ingestion_audit_log (

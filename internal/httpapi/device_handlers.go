@@ -11,9 +11,11 @@ import (
 )
 
 type registerDeviceRequest struct {
-	DeviceID     string  `json:"device_id"`
-	SiteID       string  `json:"site_id"`
-	InstallNotes *string `json:"install_notes,omitempty"`
+	DeviceID      string  `json:"device_id"`
+	SiteID        string  `json:"site_id"`
+	InstallNotes  *string `json:"install_notes,omitempty"`
+	InverterBrand *string `json:"inverter_brand,omitempty"`
+	InverterModel *string `json:"inverter_model,omitempty"`
 }
 
 func (h *handlers) registerDevice(c echo.Context) error {
@@ -25,9 +27,11 @@ func (h *handlers) registerDevice(c echo.Context) error {
 	}
 
 	result, err := h.deps.Devices.Register(c.Request().Context(), claims.UserID, registry.RegisterDeviceInput{
-		DeviceID:     req.DeviceID,
-		SiteID:       req.SiteID,
-		InstallNotes: req.InstallNotes,
+		DeviceID:      req.DeviceID,
+		SiteID:        req.SiteID,
+		InstallNotes:  req.InstallNotes,
+		InverterBrand: req.InverterBrand,
+		InverterModel: req.InverterModel,
 	})
 	if err != nil {
 		if err == registry.ErrUnknownSite {

@@ -228,6 +228,15 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type CloudImportToken struct {
+	ID         int64
+	DeviceID   string
+	TokenHash  string
+	CreatedAt  pgtype.Timestamptz
+	LastUsedAt pgtype.Timestamptz
+	RevokedAt  pgtype.Timestamptz
+}
+
 type Device struct {
 	DeviceID            string
 	SiteID              pgtype.Text
@@ -238,6 +247,8 @@ type Device struct {
 	SecretLastRotatedAt pgtype.Timestamptz
 	InstallNotes        pgtype.Text
 	LastContactAt       pgtype.Timestamptz
+	InverterBrand       pgtype.Text
+	InverterModel       pgtype.Text
 }
 
 type ExportJob struct {
@@ -334,17 +345,22 @@ type Site struct {
 }
 
 type Telemetry struct {
-	DeviceID       string
-	SiteID         string
-	Ts             pgtype.Timestamptz
-	PowerKw        float64
-	EnergyKwhTotal float64
-	VoltageV       pgtype.Float8
-	Status         ReadingStatus
-	Rssi           pgtype.Int4
-	Provenance     ProvenanceType
-	ReceivedAt     pgtype.Timestamptz
-	QualityFlags   []string
+	DeviceID        string
+	SiteID          string
+	Ts              pgtype.Timestamptz
+	PowerKw         float64
+	EnergyKwhTotal  float64
+	VoltageV        pgtype.Float8
+	Status          ReadingStatus
+	Rssi            pgtype.Int4
+	Provenance      ProvenanceType
+	ReceivedAt      pgtype.Timestamptz
+	QualityFlags    []string
+	PvPowerKw       pgtype.Float8
+	BatterySocPct   pgtype.Int2
+	BatteryVoltageV pgtype.Float8
+	PvVoltageV      pgtype.Float8
+	OutputVoltageV  pgtype.Float8
 }
 
 type TelemetryDaily struct {

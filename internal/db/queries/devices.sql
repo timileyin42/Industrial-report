@@ -1,6 +1,6 @@
 -- name: CreateDevice :one
-INSERT INTO devices (device_id, site_id, secret_hash, install_notes)
-VALUES ($1, $2, $3, $4)
+INSERT INTO devices (device_id, site_id, secret_hash, install_notes, inverter_brand, inverter_model)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetDevice :one
@@ -22,6 +22,19 @@ UPDATE devices SET revoked_at = now() WHERE device_id = $1 RETURNING *;
 
 -- name: RotateDeviceSecret :one
 UPDATE devices SET secret_hash = $2, secret_last_rotated_at = now() WHERE device_id = $1 RETURNING *;
+
+-- name: UpdateDeviceLastContact :one
+-- Unconditional reachability signal, same as the MQTT ingestor's step 2 —
+-- "we heard from this device at all," independent of whether any of its
+-- readings turned out to be valid. Used by the cloud-import path so a
+-- cloud-linked device's online/offline status is derived the same way
+-- an MQTT device's is.
+UPDATE devices SET last_contact_at = $2 WHERE device_id = $1 RETURNING *;
+
+-- name: AdvanceDeviceLastSeen :exec
+-- Forward-only, same as the MQTT ingestor's step 7 — an out-of-order or
+-- backfilled reading must never walk this backward.
+UPDATE devices SET last_seen_at = $2 WHERE device_id = $1 AND (last_seen_at IS NULL OR last_seen_at < $2);
 
 -- name: CountOnlineDevices :one
 -- cutoff is computed in Go from ONLINE_THRESHOLD_MINUTES, never a SQL
