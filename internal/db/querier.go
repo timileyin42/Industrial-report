@@ -232,6 +232,11 @@ type Querier interface {
 	// migration backfilling this column had to guess 'NG' for every
 	// pre-existing row (see migrations/0010_site_country.sql).
 	UpdateSiteCountry(ctx context.Context, arg UpdateSiteCountryParams) (Site, error)
+	// Corrects/sets a site's GPS coordinates after creation — needed for
+	// any site created without them (e.g. cloud-imported sites, where the
+	// precise lat/lng only becomes available from a later, more detailed
+	// vendor API call than the one used at registration time).
+	UpdateSiteLocation(ctx context.Context, arg UpdateSiteLocationParams) (Site, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	// Recomputes each row's expected hash using the exact same expression as
 	// the ingestion_audit_log_chain() trigger (migrations/0013) and compares

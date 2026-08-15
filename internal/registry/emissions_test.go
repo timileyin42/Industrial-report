@@ -29,7 +29,7 @@ func seedSiteWithEnergy(t *testing.T, ctx context.Context, q *db.Queries, pool *
 	// daily energy is computed as (last reading's total - first reading's
 	// total) for that day. A single reading would give a trivial delta of
 	// zero, so this seeds two: one at 0, one at energyKWh.
-	day := time.Now().UTC().Truncate(24*time.Hour).Add(-48 * time.Hour)
+	day := time.Now().UTC().Truncate(24 * time.Hour).Add(-48 * time.Hour)
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO telemetry (device_id, site_id, ts, power_kw, energy_kwh_total) VALUES ($1, $2, $3, 0, 0)`,
 		deviceID, siteID, day.Add(6*time.Hour),

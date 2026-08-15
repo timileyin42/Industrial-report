@@ -90,6 +90,20 @@ func (s *Sites) UpdateCountry(ctx context.Context, actorUserID int64, siteID, co
 	return site, nil
 }
 
+// UpdateLocation sets/corrects a site's GPS coordinates after creation —
+// e.g. a cloud-imported site registered before its precise lat/lng was
+// known (see cmd/pvpro-sync, whose plant-summary lookup only carries
+// province/country-level coordinates; the precise per-plant lat/lng
+// needs a separate, per-plant detail call).
+func (s *Sites) UpdateLocation(ctx context.Context, actorUserID int64, siteID string, lat, lng float64) (db.Site, error) {
+	site, err := s.q.UpdateSiteLocation(ctx, db.UpdateSiteLocationParams{SiteID: siteID, GpsLat: float8OrNull(&lat), GpsLng: float8OrNull(&lng)})
+	if err != nil {
+		return db.Site{}, err
+	}
+	recordAction(ctx, s.q, actorUserID, "site.update_location", "site", site.SiteID, map[string]any{"gps_lat": lat, "gps_lng": lng})
+	return site, nil
+}
+
 // SetPrimary marks siteID as the fleet's one primary/home site, clearing
 // the flag from whichever site (if any) held it before. This is what the
 // Fleet Dashboard's weather widget resolves its location from — an

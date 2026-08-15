@@ -57,8 +57,8 @@ type cloudReadingResultResponse struct {
 }
 
 type submitCloudReadingsResponse struct {
-	AcceptedCount int                           `json:"accepted_count"`
-	RejectedCount int                           `json:"rejected_count"`
+	AcceptedCount int                          `json:"accepted_count"`
+	RejectedCount int                          `json:"rejected_count"`
 	Readings      []cloudReadingResultResponse `json:"readings"`
 }
 

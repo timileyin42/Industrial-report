@@ -396,3 +396,39 @@ func (q *Queries) UpdateSiteCountry(ctx context.Context, arg UpdateSiteCountryPa
 	)
 	return i, err
 }
+
+const updateSiteLocation = `-- name: UpdateSiteLocation :one
+UPDATE sites SET gps_lat = $2, gps_lng = $3 WHERE site_id = $1
+RETURNING site_id, cohort_id, address, name, gps_lat, gps_lng, inverter_make_model, system_size_kw, install_date, timezone, country, is_primary, created_at
+`
+
+type UpdateSiteLocationParams struct {
+	SiteID string
+	GpsLat pgtype.Float8
+	GpsLng pgtype.Float8
+}
+
+// Corrects/sets a site's GPS coordinates after creation — needed for
+// any site created without them (e.g. cloud-imported sites, where the
+// precise lat/lng only becomes available from a later, more detailed
+// vendor API call than the one used at registration time).
+func (q *Queries) UpdateSiteLocation(ctx context.Context, arg UpdateSiteLocationParams) (Site, error) {
+	row := q.db.QueryRow(ctx, updateSiteLocation, arg.SiteID, arg.GpsLat, arg.GpsLng)
+	var i Site
+	err := row.Scan(
+		&i.SiteID,
+		&i.CohortID,
+		&i.Address,
+		&i.Name,
+		&i.GpsLat,
+		&i.GpsLng,
+		&i.InverterMakeModel,
+		&i.SystemSizeKw,
+		&i.InstallDate,
+		&i.Timezone,
+		&i.Country,
+		&i.IsPrimary,
+		&i.CreatedAt,
+	)
+	return i, err
+}

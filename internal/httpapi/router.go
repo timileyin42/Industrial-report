@@ -110,6 +110,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/fleet/alerts", h.fleetAlerts, operatorOnly)
 	authed.GET("/sites/:site_id", h.getSite, auth.RequireSiteAccess(h.resolveSiteFromParam))
 	authed.PATCH("/sites/:site_id/country", h.updateSiteCountry, operatorOnly)
+	authed.PATCH("/sites/:site_id/location", h.updateSiteLocation, operatorOnly)
 	authed.PATCH("/sites/:site_id/primary", h.setSitePrimary, operatorOnly)
 	authed.GET("/sites/:site_id/telemetry", h.listTelemetry, auth.RequireSiteAccess(h.resolveSiteFromParam))
 

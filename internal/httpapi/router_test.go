@@ -195,7 +195,9 @@ func TestRequireSiteAccess_DeviceScopedRouteForbidsAnotherSitesDevice(t *testing
 	); err != nil {
 		t.Fatalf("seed device: %v", err)
 	}
-	t.Cleanup(func() { _, _ = api.pool.Exec(context.Background(), `DELETE FROM devices WHERE device_id = $1`, deviceID) })
+	t.Cleanup(func() {
+		_, _ = api.pool.Exec(context.Background(), `DELETE FROM devices WHERE device_id = $1`, deviceID)
+	})
 
 	token := api.token(t, domain.RoleRestricted, &ownSiteID)
 

@@ -33,6 +33,11 @@ type updateSiteCountryRequest struct {
 	Country string `json:"country"`
 }
 
+type updateSiteLocationRequest struct {
+	GPSLat float64 `json:"gps_lat"`
+	GPSLng float64 `json:"gps_lng"`
+}
+
 type pageResponse[T any] struct {
 	Items      []T    `json:"items"`
 	NextCursor string `json:"next_cursor,omitempty"`
@@ -82,6 +87,24 @@ func (h *handlers) updateSiteCountry(c echo.Context) error {
 	}
 
 	site, err := h.deps.Sites.UpdateCountry(c.Request().Context(), claims.UserID, c.Param("site_id"), req.Country)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, toSiteResponse(site))
+}
+
+// updateSiteLocation sets/corrects a site's GPS coordinates after
+// creation — e.g. a cloud-imported site registered before its precise
+// lat/lng was known.
+func (h *handlers) updateSiteLocation(c echo.Context) error {
+	claims, _ := auth.GetClaims(c)
+
+	var req updateSiteLocationRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	site, err := h.deps.Sites.UpdateLocation(c.Request().Context(), claims.UserID, c.Param("site_id"), req.GPSLat, req.GPSLng)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}

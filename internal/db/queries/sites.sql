@@ -13,6 +13,14 @@ SELECT * FROM sites WHERE site_id = $1;
 UPDATE sites SET country = $2 WHERE site_id = $1
 RETURNING *;
 
+-- name: UpdateSiteLocation :one
+-- Corrects/sets a site's GPS coordinates after creation — needed for
+-- any site created without them (e.g. cloud-imported sites, where the
+-- precise lat/lng only becomes available from a later, more detailed
+-- vendor API call than the one used at registration time).
+UPDATE sites SET gps_lat = $2, gps_lng = $3 WHERE site_id = $1
+RETURNING *;
+
 -- name: UnsetAllPrimarySites :exec
 -- Paired with SetSitePrimary below (run first, in the same registry
 -- method) — the unique index (migrations/0011_primary_site.sql) is the

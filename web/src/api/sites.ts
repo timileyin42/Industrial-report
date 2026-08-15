@@ -25,6 +25,16 @@ export async function updateSiteCountry(siteId: string, country: string): Promis
   return SiteSchema.parse(data);
 }
 
+// Sets/corrects a site's GPS coordinates after creation — e.g. a
+// cloud-imported site registered before its precise lat/lng was known.
+export async function updateSiteLocation(siteId: string, gpsLat: number, gpsLng: number): Promise<Site> {
+  const data = await apiRequest<unknown>(`/v1/sites/${encodeURIComponent(siteId)}/location`, {
+    method: "PATCH",
+    body: { gps_lat: gpsLat, gps_lng: gpsLng },
+  });
+  return SiteSchema.parse(data);
+}
+
 // Marks this site as the fleet's one primary/home site — what the Fleet
 // Dashboard's weather widget resolves its location from. Setting a new
 // one clears the flag from whichever site held it before (server-side,
