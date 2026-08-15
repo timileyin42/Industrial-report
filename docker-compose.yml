@@ -95,6 +95,24 @@ services:
       api:
         condition: service_started
 
+  # Cloud-import connector for Chisage's PV Pro app (E-linter CSP
+  # platform, reverse-engineered — see cmd/pvpro-sync's package comment).
+  # PVPRO_USERNAME/PASSWORD/SYNC_CONFIG live only in the server's .env,
+  # never in this file or the repo. Talks to `api` over the internal
+  # docker network, not the public domain, same as any other service here.
+  pvpro-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.pvpro-sync
+    container_name: zgnis-pvpro-sync
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_BASE_URL: http://api:8080
+    depends_on:
+      api:
+        condition: service_started
+
   # Not started by `docker compose up` (no `depends_on` targets it) —
   # run once per environment via:
   #   docker compose run --rm seed-operator -email you@example.com -password 'change-me-now'
