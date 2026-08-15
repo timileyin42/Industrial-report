@@ -5,30 +5,33 @@
 // backend used under other brand names (Sunsynk Connect, Powerview for
 // Sol-Ark). Community client libraries for those other brands (e.g.
 // github.com/jamesridgway/sunsynk-api-client) document the login flow;
-// this file ports that flow with source="pvpro" against pv.inteless.com,
-// confirmed working against a real PV Pro account.
+// pvpro_client.go ports that flow with source="pvpro" against
+// pv.inteless.com, confirmed working against a real PV Pro account.
 //
 // This is deliberately a separate, isolated connector, not a change to
 // the vendor-agnostic core (internal/registry/cloud_import.go stays
 // vendor-blind) — it just authenticates to one specific vendor's cloud
 // and forwards normalized readings to POST /v1/cloud-import/:device_id/
-// readings like any other external source could. Config (which PV Pro
-// plant/inverter maps to which of our device IDs, and that device's
-// cloud-import token) is a small JSON blob via PVPRO_SYNC_CONFIG, kept
-// out of the core schema on purpose — see internal/registry/cloud_import.go's
-// package comment for why.
+// readings like any other external source could.
+//
+// Auto-discovery: every cycle, this asks PV Pro for every plant/inverter
+// on the account (not a fixed list) and reconciles against what's
+// already registered on our platform (our_client.go) — a device that
+// already exists keeps its existing site_id (so a plant that was
+// manually registered under a hand-chosen site_id, like the first two
+// test sites, is never duplicated under a second, auto-generated one); a
+// genuinely new plant gets a fresh site (site_id "PVPRO-<plantID>")
+// created with its precise lat/lon pulled from PV Pro's own per-plant
+// detail endpoint, so a new site's location is correct from the moment
+// it's created — no manual PATCH /v1/sites/:id/location needed
+// afterward, unlike the first two sites this connector was proven
+// against.
 package main
 
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log"
@@ -40,98 +43,192 @@ import (
 	"time"
 )
 
-const pvproSource = "pvpro"
-
-// deviceConfig maps one of our own device IDs to the PV Pro plant/inverter
-// it should be synced from, plus the cloud-import bearer token issued for
-// that device (see POST /v1/devices/:device_id/cloud-import-token).
-type deviceConfig struct {
-	DeviceID         string `json:"device_id"`
-	PlantID          int64  `json:"plant_id"`
-	InverterID       int64  `json:"inverter_id"`
-	CloudImportToken string `json:"cloud_import_token"`
+// knownDevice caches what a full discovery pass already resolved for one
+// device, so subsequent cycles don't re-issue a cloud-import token (safe
+// to call again — IssueToken rotates — but pointless churn) or re-check
+// existence with our API every 30 seconds.
+type knownDevice struct {
+	siteID     string
+	inverterID int64
+	token      string
 }
 
 func main() {
-	username := mustEnv("PVPRO_USERNAME")
-	password := mustEnv("PVPRO_PASSWORD")
+	pvproUsername := mustEnv("PVPRO_USERNAME")
+	pvproPassword := mustEnv("PVPRO_PASSWORD")
 	apiBaseURL := mustEnv("API_BASE_URL")
+	operatorEmail := mustEnv("API_OPERATOR_EMAIL")
+	operatorPassword := mustEnv("API_OPERATOR_PASSWORD")
 	pollInterval := envSeconds("POLL_INTERVAL_SECONDS", 30)
-
-	var configs []deviceConfig
-	if err := json.Unmarshal([]byte(mustEnv("PVPRO_SYNC_CONFIG")), &configs); err != nil {
-		log.Fatalf("invalid PVPRO_SYNC_CONFIG: %v", err)
-	}
-	if len(configs) == 0 {
-		log.Fatal("PVPRO_SYNC_CONFIG has no devices configured")
-	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	pv := newPVProClient(username, password)
+	pv := newPVProClient(pvproUsername, pvproPassword)
+	ours := newOurAPIClient(apiBaseURL, operatorEmail, operatorPassword)
+	known := map[string]knownDevice{} // our device_id -> cached info, rebuilt/extended each cycle
 
-	log.Printf("pvpro-sync starting: %d device(s), polling every %s", len(configs), pollInterval)
+	log.Printf("pvpro-sync starting: auto-discovery mode, polling every %s", pollInterval)
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
-	runOnce(ctx, pv, apiBaseURL, configs)
+	runOnce(ctx, pv, ours, known)
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("shutting down")
 			return
 		case <-ticker.C:
-			runOnce(ctx, pv, apiBaseURL, configs)
+			runOnce(ctx, pv, ours, known)
 		}
 	}
 }
 
-// runOnce fetches every configured plant's inverter list once (not once
-// per device — several devices can share a plant, like the two at
-// Promise Lodge), then per device merges in the flow endpoint's
-// battery/PV detail and forwards a single reading to our own
-// cloud-import endpoint.
-func runOnce(ctx context.Context, pv *pvproClient, apiBaseURL string, configs []deviceConfig) {
-	plantIDs := map[int64]bool{}
-	for _, c := range configs {
-		plantIDs[c.PlantID] = true
+func runOnce(ctx context.Context, pv *pvproClient, ours *ourAPIClient, known map[string]knownDevice) {
+	plants, err := pv.getPlants(ctx)
+	if err != nil {
+		log.Printf("pvpro: fetch plants: %v", err)
+		return
 	}
 
-	inverters := map[int64]pvproInverter{} // inverter id -> its record
-	for plantID := range plantIDs {
-		list, err := pv.getInverters(ctx, plantID)
+	type toSync struct {
+		deviceID string
+		inv      pvproInverter
+	}
+	var syncList []toSync
+
+	for _, plant := range plants {
+		inverters, err := pv.getInverters(ctx, plant.ID)
 		if err != nil {
-			log.Printf("pvpro: fetch inverters for plant %d: %v", plantID, err)
+			log.Printf("pvpro: fetch inverters for plant %d (%s): %v", plant.ID, plant.Name, err)
 			continue
 		}
-		for _, inv := range list {
-			inverters[inv.ID] = inv
+		if len(inverters) == 0 {
+			continue
+		}
+
+		siteID, err := reconcileSite(ctx, pv, ours, plant, inverters, known)
+		if err != nil {
+			log.Printf("pvpro: reconcile site for plant %d (%s): %v", plant.ID, plant.Name, err)
+			continue
+		}
+
+		for _, inv := range inverters {
+			if inv.SN == "" {
+				continue
+			}
+			if _, ok := known[inv.SN]; !ok {
+				if err := ensureDeviceRegisteredAndTokenCached(ctx, ours, siteID, inv, known); err != nil {
+					log.Printf("pvpro: ensure device %s registered: %v", inv.SN, err)
+					continue
+				}
+			}
+			syncList = append(syncList, toSync{deviceID: inv.SN, inv: inv})
 		}
 	}
 
-	for i, c := range configs {
+	for i, item := range syncList {
 		if i > 0 {
 			time.Sleep(1500 * time.Millisecond) // spread out our own cloud-import calls, same rate class as any other public write endpoint
 		}
-		inv, ok := inverters[c.InverterID]
-		if !ok {
-			log.Printf("pvpro: inverter %d (device %s) not found in plant %d's inverter list", c.InverterID, c.DeviceID, c.PlantID)
-			continue
-		}
-		flow, err := pv.getFlow(ctx, c.InverterID)
+		kd := known[item.deviceID]
+		flow, err := pv.getFlow(ctx, kd.inverterID)
 		if err != nil {
-			log.Printf("pvpro: fetch flow for inverter %d (device %s): %v", c.InverterID, c.DeviceID, err)
+			log.Printf("pvpro: fetch flow for inverter %d (device %s): %v", kd.inverterID, item.deviceID, err)
 			continue
 		}
-
-		reading := buildReading(inv, flow)
-		if err := submitReading(ctx, apiBaseURL, c.DeviceID, c.CloudImportToken, reading); err != nil {
-			log.Printf("pvpro: submit reading for device %s: %v", c.DeviceID, err)
+		reading := buildReading(item.inv, flow)
+		if err := submitReading(ctx, kd.token, ours.baseURL, item.deviceID, reading); err != nil {
+			log.Printf("pvpro: submit reading for device %s: %v", item.deviceID, err)
 			continue
 		}
-		log.Printf("pvpro: synced device %s — %.2f kW AC, %.2f kW PV, ts=%s", c.DeviceID, reading.PowerKW, floatOrZero(reading.PVPowerKW), reading.Timestamp)
+		log.Printf("pvpro: synced device %s — %.2f kW AC, %.2f kW PV, ts=%s", item.deviceID, reading.PowerKW, floatOrZero(reading.PVPowerKW), reading.Timestamp)
 	}
+}
+
+// reconcileSite decides which of our site_ids a plant's inverters belong
+// to — reusing an existing one if ANY of the plant's inverters are
+// already registered (never creating a second site for a plant we
+// already know), or creating a genuinely new one (with precise lat/lon
+// pulled fresh from PV Pro) only when none of them are.
+func reconcileSite(ctx context.Context, pv *pvproClient, ours *ourAPIClient, plant pvproPlant, inverters []pvproInverter, known map[string]knownDevice) (string, error) {
+	for _, inv := range inverters {
+		if inv.SN == "" {
+			continue
+		}
+		if kd, ok := known[inv.SN]; ok {
+			return kd.siteID, nil
+		}
+		siteID, exists, err := ours.findDeviceSite(ctx, inv.SN)
+		if err != nil {
+			return "", err
+		}
+		if exists {
+			return siteID, nil
+		}
+	}
+
+	// None of this plant's inverters are registered anywhere yet — this
+	// is a genuinely new plant. site_id is deterministic from PV Pro's
+	// own plant ID, so re-running discovery never computes a different
+	// id for the same plant.
+	siteID := fmt.Sprintf("PVPRO-%d", plant.ID)
+	alreadyExists, err := ours.siteExists(ctx, siteID)
+	if err != nil {
+		return "", err
+	}
+	if alreadyExists {
+		return siteID, nil
+	}
+
+	detail, err := pv.getPlantDetail(ctx, plant.ID)
+	if err != nil {
+		return "", fmt.Errorf("fetch plant detail: %w", err)
+	}
+	timezone := detail.Timezone.Code
+	if timezone == "" {
+		timezone = "Africa/Lagos" // every known Chisage deployment for this connector is Nigeria
+	}
+	if err := ours.createSite(ctx, newSiteInput{
+		SiteID:       siteID,
+		Name:         plant.Name,
+		Address:      plant.Address,
+		GPSLat:       detail.Lat,
+		GPSLng:       detail.Lon,
+		SystemSizeKW: detail.Realtime.TotalPower,
+		Timezone:     timezone,
+		Country:      "NG", // this connector's only known deployment — see package comment
+	}); err != nil {
+		return "", fmt.Errorf("create site: %w", err)
+	}
+	log.Printf("pvpro: auto-registered new site %s (%q) at %.6f,%.6f", siteID, plant.Name, detail.Lat, detail.Lon)
+	return siteID, nil
+}
+
+func ensureDeviceRegisteredAndTokenCached(ctx context.Context, ours *ourAPIClient, siteID string, inv pvproInverter, known map[string]knownDevice) error {
+	_, exists, err := ours.findDeviceSite(ctx, inv.SN)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if err := ours.createDevice(ctx, newDeviceInput{
+			DeviceID:      inv.SN,
+			SiteID:        siteID,
+			InverterBrand: "chisage",
+			InverterModel: inv.Model,
+			InstallNotes:  "Auto-registered via pvpro-sync (PV Pro cloud import)",
+		}); err != nil {
+			return fmt.Errorf("create device: %w", err)
+		}
+		log.Printf("pvpro: auto-registered new device %s (model %s) under site %s", inv.SN, inv.Model, siteID)
+	}
+
+	token, err := ours.issueCloudImportToken(ctx, inv.SN)
+	if err != nil {
+		return fmt.Errorf("issue cloud-import token: %w", err)
+	}
+	known[inv.SN] = knownDevice{siteID: siteID, inverterID: inv.ID, token: token}
+	return nil
 }
 
 // cloudReading mirrors internal/httpapi's cloudReadingRequest — this
@@ -178,7 +275,7 @@ func floatOrZero(f *float64) float64 {
 	return *f
 }
 
-func submitReading(ctx context.Context, apiBaseURL, deviceID, token string, reading cloudReading) error {
+func submitReading(ctx context.Context, token, apiBaseURL, deviceID string, reading cloudReading) error {
 	body, err := json.Marshal(struct {
 		Readings []cloudReading `json:"readings"`
 	}{Readings: []cloudReading{reading}})
@@ -204,200 +301,6 @@ func submitReading(ctx context.Context, apiBaseURL, deviceID, token string, read
 		return fmt.Errorf("cloud-import returned %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
-}
-
-// --- PV Pro / E-linter CSP client ---
-
-type pvproClient struct {
-	baseURL        string
-	username       string
-	password       string
-	httpClient     *http.Client
-	accessToken    string
-	tokenExpiresAt time.Time
-}
-
-func newPVProClient(username, password string) *pvproClient {
-	return &pvproClient{
-		baseURL:    "https://pv.inteless.com",
-		username:   username,
-		password:   password,
-		httpClient: &http.Client{Timeout: 15 * time.Second},
-	}
-}
-
-type pvproInverter struct {
-	ID       int64   `json:"id"`
-	SN       string  `json:"sn"`
-	Status   int     `json:"status"`
-	Pac      float64 `json:"pac"`
-	Etotal   float64 `json:"etotal"`
-	UpdateAt string  `json:"updateAt"`
-}
-
-type pvproFlow struct {
-	PVPower float64 `json:"pvPower"`
-	SOC     float64 `json:"soc"`
-	BattV   float64 `json:"battV"`
-}
-
-func (c *pvproClient) ensureToken(ctx context.Context) error {
-	if c.accessToken != "" && time.Now().Before(c.tokenExpiresAt) {
-		return nil
-	}
-	return c.login(ctx)
-}
-
-func (c *pvproClient) login(ctx context.Context) error {
-	publicKey, err := c.fetchPublicKey(ctx)
-	if err != nil {
-		return fmt.Errorf("fetch public key: %w", err)
-	}
-	encryptedPassword, err := encryptPassword(publicKey, c.password)
-	if err != nil {
-		return fmt.Errorf("encrypt password: %w", err)
-	}
-
-	nonce := time.Now().UnixMilli()
-	first10 := publicKey
-	if len(first10) > 10 {
-		first10 = first10[:10]
-	}
-	sign := md5Hex(fmt.Sprintf("nonce=%d&source=%s%s", nonce, pvproSource, first10))
-
-	reqBody, _ := json.Marshal(map[string]any{
-		"sign":       sign,
-		"nonce":      nonce,
-		"username":   c.username,
-		"password":   encryptedPassword,
-		"grant_type": "password",
-		"client_id":  "csp-web",
-		"source":     pvproSource,
-	})
-
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/oauth/token/new", bytes.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var tokenResp struct {
-		Success bool   `json:"success"`
-		Msg     string `json:"msg"`
-		Data    struct {
-			AccessToken  string `json:"access_token"`
-			RefreshToken string `json:"refresh_token"`
-			ExpiresIn    int    `json:"expires_in"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return err
-	}
-	if !tokenResp.Success {
-		return fmt.Errorf("login failed: %s", tokenResp.Msg)
-	}
-	c.accessToken = tokenResp.Data.AccessToken
-	// 60s safety buffer, same margin the community client for this same backend uses.
-	c.tokenExpiresAt = time.Now().Add(time.Duration(tokenResp.Data.ExpiresIn)*time.Second - 60*time.Second)
-	return nil
-}
-
-func (c *pvproClient) fetchPublicKey(ctx context.Context) (string, error) {
-	nonce := time.Now().UnixMilli()
-	sign := md5Hex(fmt.Sprintf("nonce=%d&source=%sPOWER_VIEW", nonce, pvproSource))
-
-	url := fmt.Sprintf("%s/anonymous/publicKey?source=%s&nonce=%d&sign=%s", c.baseURL, pvproSource, nonce, sign)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var pkResp struct {
-		Data string `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&pkResp); err != nil {
-		return "", err
-	}
-	if pkResp.Data == "" {
-		return "", fmt.Errorf("empty public key in response")
-	}
-	return pkResp.Data, nil
-}
-
-func encryptPassword(publicKeyBase64, password string) (string, error) {
-	pemStr := "-----BEGIN PUBLIC KEY-----\n" + publicKeyBase64 + "\n-----END PUBLIC KEY-----"
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return "", fmt.Errorf("failed to decode PEM public key")
-	}
-	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return "", err
-	}
-	rsaPub, ok := pub.(*rsa.PublicKey)
-	if !ok {
-		return "", fmt.Errorf("public key is not RSA")
-	}
-	encrypted, err := rsa.EncryptPKCS1v15(rand.Reader, rsaPub, []byte(password))
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(encrypted), nil
-}
-
-func md5Hex(s string) string {
-	sum := md5.Sum([]byte(s))
-	return fmt.Sprintf("%x", sum)
-}
-
-func (c *pvproClient) getInverters(ctx context.Context, plantID int64) ([]pvproInverter, error) {
-	if err := c.ensureToken(ctx); err != nil {
-		return nil, err
-	}
-	url := fmt.Sprintf("%s/api/v1/plant/%d/inverters?page=1&limit=50&status=-1&sn=&id=%d&type=-2", c.baseURL, plantID, plantID)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var out struct {
-		Data struct {
-			Infos []pvproInverter `json:"infos"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return out.Data.Infos, nil
-}
-
-func (c *pvproClient) getFlow(ctx context.Context, inverterID int64) (pvproFlow, error) {
-	if err := c.ensureToken(ctx); err != nil {
-		return pvproFlow{}, err
-	}
-	url := fmt.Sprintf("%s/api/v1/inverter/%d/flow", c.baseURL, inverterID)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	req.Header.Set("Authorization", "Bearer "+c.accessToken)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return pvproFlow{}, err
-	}
-	defer resp.Body.Close()
-
-	var out struct {
-		Data pvproFlow `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return pvproFlow{}, err
-	}
-	return out.Data, nil
 }
 
 func mustEnv(key string) string {
