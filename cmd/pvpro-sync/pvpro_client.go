@@ -78,6 +78,12 @@ type pvproFlow struct {
 	PVPower float64 `json:"pvPower"`
 	SOC     float64 `json:"soc"`
 	BattV   float64 `json:"battV"`
+	// ExistsBattery: some inverters (e.g. grid-tie-only models) genuinely
+	// have no battery — PV Pro still returns soc/battV as 0 in that case,
+	// not null, so this flag is the only way to tell "no battery" apart
+	// from "battery reads 0 right now." Must be checked before treating
+	// SOC/BattV as real readings (see buildReading in main.go).
+	ExistsBattery bool `json:"existsBattery"`
 }
 
 func (c *pvproClient) ensureToken(ctx context.Context) error {

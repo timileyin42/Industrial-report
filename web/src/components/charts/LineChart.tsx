@@ -37,7 +37,13 @@ export function LineChart({
   const width = 1000;
   const hasSecond = !!points2 && points2.length >= 2;
   const allY = hasSecond ? [...points.map((p) => p.y), ...points2!.map((p) => p.y)] : points.map((p) => p.y);
-  const maxY = Math.max(...allY, 1);
+  // Only fall back to a ceiling of 1 when every real value is exactly 0
+  // (avoids a divide-by-zero range below) — flooring the ceiling at 1
+  // unconditionally used to squash genuinely small-but-real values (e.g.
+  // 0.03 kW just after sunrise) down into the bottom few pixels, reading
+  // as "flat" when the data was actually moving.
+  const realMaxY = Math.max(...allY);
+  const maxY = realMaxY > 0 ? realMaxY : 1;
   const minY = Math.min(...allY, 0);
   const range = maxY - minY || 1;
 

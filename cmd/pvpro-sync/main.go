@@ -263,15 +263,23 @@ type cloudReading struct {
 // that up is future work, not something to fake with an unverified
 // guess.
 func buildReading(inv pvproInverter, flow pvproFlow) cloudReading {
-	return cloudReading{
-		Timestamp:       inv.UpdateAt,
-		PowerKW:         inv.Pac / 1000.0,
-		EnergyKWhTotal:  inv.Etotal,
-		Status:          "ok",
-		PVPowerKW:       floatPtr(flow.PVPower / 1000.0),
-		BatterySOCPct:   floatPtr(flow.SOC),
-		BatteryVoltageV: floatPtr(flow.BattV),
+	reading := cloudReading{
+		Timestamp:      inv.UpdateAt,
+		PowerKW:        inv.Pac / 1000.0,
+		EnergyKWhTotal: inv.Etotal,
+		Status:         "ok",
+		PVPowerKW:      floatPtr(flow.PVPower / 1000.0),
 	}
+	// A grid-tie-only inverter genuinely has no battery — PV Pro still
+	// returns soc/battV as 0 in that case, not null, so ExistsBattery is
+	// the only way to tell "no battery" apart from "battery reads 0 right
+	// now." Omitting these fields (rather than sending a fabricated 0)
+	// matches how SiteDetailPage already renders "—" for absent data.
+	if flow.ExistsBattery {
+		reading.BatterySOCPct = floatPtr(flow.SOC)
+		reading.BatteryVoltageV = floatPtr(flow.BattV)
+	}
+	return reading
 }
 
 func floatPtr(f float64) *float64 { return &f }
