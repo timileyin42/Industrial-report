@@ -134,6 +134,21 @@ export function FleetDashboardPage() {
   const data = summaryQuery.data;
   const energyPoints = (energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
   const powerCurvePoints = (powerCurveQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.avg_power_kw }));
+  // ~6 evenly spaced time-of-day ticks under the Day chart — hour alone
+  // is enough (no date), since "Day" already means today (or whatever
+  // date's selected above). Fixed to Africa/Lagos, this connector's only
+  // real deployment today, same assumption pvpro-sync itself makes —
+  // revisit if/when sites outside Nigeria come online.
+  const powerCurveTicks = (() => {
+    const pts = powerCurveQuery.data?.points ?? [];
+    if (pts.length < 2) return [];
+    const tickCount = Math.min(6, pts.length);
+    const indices = Array.from({ length: tickCount }, (_, i) => Math.round((i / (tickCount - 1)) * (pts.length - 1)));
+    return [...new Set(indices)].map((i) => ({
+      frac: i / (pts.length - 1),
+      label: new Date(pts[i].bucket).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }),
+    }));
+  })();
   const latestTrend = trendsQuery.data?.points.at(-1) ?? null;
   const emissionsUnconfigured = emissionsQuery.error instanceof ApiError && emissionsQuery.error.status === 409;
   const primarySite = primarySiteQuery.data;
@@ -323,7 +338,7 @@ export function FleetDashboardPage() {
                   ) : powerCurvePoints.length < 2 ? (
                     <EmptyState compact title="Not enough data yet" body="Today's generation curve will chart here once there are more readings." />
                   ) : (
-                    <LineChart points={powerCurvePoints} color="#2f8fe0" />
+                    <LineChart points={powerCurvePoints} color="#2f8fe0" xAxisLabels={powerCurveTicks} />
                   )
                 ) : energyQuery.isLoading ? (
                   <div className="h-full bg-surface-dim rounded-lg animate-pulse" />

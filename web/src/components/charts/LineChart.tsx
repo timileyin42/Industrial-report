@@ -17,6 +17,7 @@ export function LineChart({
   points2,
   color2 = "#f2a93b",
   label2,
+  xAxisLabels,
 }: {
   points: { x: number; y: number }[];
   color?: string;
@@ -25,6 +26,12 @@ export function LineChart({
   points2?: { x: number; y: number }[];
   color2?: string;
   label2?: string;
+  // Optional time-of-day ticks below the chart (e.g. an intraday power
+  // curve) — frac is the tick's horizontal position (0 = first point,
+  // 1 = last), matching the same index-based x-scale the chart itself
+  // uses. Omitted entirely for charts with no natural time-of-day axis
+  // (daily/monthly energy trends, which are already index-per-period).
+  xAxisLabels?: { frac: number; label: string }[];
 }) {
   if (points.length < 2) {
     return (
@@ -104,6 +111,19 @@ export function LineChart({
           <path d={path2} fill="none" stroke={color2} strokeWidth={2} strokeLinejoin="miter" vectorEffect="non-scaling-stroke" strokeDasharray="5 3" />
         )}
       </svg>
+      {xAxisLabels && xAxisLabels.length > 0 && (
+        <div className="relative h-4 mt-1 text-[10px] text-on-surface-variant">
+          {xAxisLabels.map((t, i) => (
+            <span
+              key={i}
+              className="absolute -translate-x-1/2 first:translate-x-0 last:-translate-x-full"
+              style={{ left: `${t.frac * 100}%` }}
+            >
+              {t.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
