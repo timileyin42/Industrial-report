@@ -251,16 +251,23 @@ type cloudReading struct {
 // comes from the inverter list's own pac field (confirmed per-inverter,
 // not plant-aggregated) rather than the flow endpoint, which only
 // exposes pvPower/soc/battV — no direct AC-output figure.
+//
+// status is always "ok" — deliberately NOT derived from inv.Status.
+// That field is a coarse numeric code whose meanings aren't documented
+// and don't match the naive guess "1 = fine, anything else = fault":
+// status 2 was observed on a perfectly healthy, "Normal"-badged inverter
+// simply idle at night. Since our own status feeds the Alerts page's
+// fault detection, guessing wrong here would raise false fault alerts —
+// worse than reporting nothing. PV Pro's own Event log (F02/W27/F03
+// style codes, not this status field) is the real fault signal; wiring
+// that up is future work, not something to fake with an unverified
+// guess.
 func buildReading(inv pvproInverter, flow pvproFlow) cloudReading {
-	status := "ok"
-	if inv.Status != 1 {
-		status = "fault"
-	}
 	return cloudReading{
 		Timestamp:       inv.UpdateAt,
 		PowerKW:         inv.Pac / 1000.0,
 		EnergyKWhTotal:  inv.Etotal,
-		Status:          status,
+		Status:          "ok",
 		PVPowerKW:       floatPtr(flow.PVPower / 1000.0),
 		BatterySOCPct:   floatPtr(flow.SOC),
 		BatteryVoltageV: floatPtr(flow.BattV),
