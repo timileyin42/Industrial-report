@@ -104,7 +104,9 @@ export function SiteAnalyticsPage() {
   const emissionsUnconfigured = emissionsQuery.error instanceof ApiError && emissionsQuery.error.status === 409;
 
   const anomalyColumns: Column<Anomaly>[] = [
-    { header: "Day", isMono: true, render: (a) => new Date(a.day).toLocaleDateString() },
+    // Site-local day, not the viewer's — a "day" bucket boundary should
+    // align with midnight at the site, not wherever the viewer is.
+    { header: "Day", isMono: true, render: (a) => new Date(a.day).toLocaleDateString(undefined, { timeZone: site?.timezone }) },
     { header: "Energy", isMono: true, align: "right", render: (a) => `${a.energy_kwh.toFixed(1)} kWh` },
     { header: "Baseline", isMono: true, align: "right", render: (a) => `${a.baseline_kwh.toFixed(1)} kWh` },
     {

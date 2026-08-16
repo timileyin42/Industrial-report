@@ -237,7 +237,10 @@ export function SiteDetailPage() {
           />
           <KpiCard
             label="Last Reading"
-            value={latest ? new Date(latest.ts).toLocaleTimeString() : "—"}
+            // The site's own local time, not the viewer's — a reading
+            // timestamp should mean the same wall-clock moment at the
+            // site regardless of which timezone someone's viewing from.
+            value={latest ? new Date(latest.ts).toLocaleTimeString(undefined, { timeZone: site.timezone }) : "—"}
           />
         </div>
 

@@ -6,7 +6,17 @@ import { fetchCurrentWeather, describeWeatherCode } from "../../lib/weather";
 // graceful placeholder) when no site with coordinates is available yet,
 // rather than showing weather for a location that doesn't correspond to
 // anything real.
-export function WeatherWidget({ lat, lng, siteName }: { lat?: number | null; lng?: number | null; siteName?: string }) {
+export function WeatherWidget({
+  lat,
+  lng,
+  siteName,
+  timezone,
+}: {
+  lat?: number | null;
+  lng?: number | null;
+  siteName?: string;
+  timezone?: string;
+}) {
   const enabled = lat != null && lng != null;
   const { data, isLoading, isError } = useQuery({
     queryKey: ["weather", lat, lng],
@@ -15,7 +25,10 @@ export function WeatherWidget({ lat, lng, siteName }: { lat?: number | null; lng
     staleTime: 10 * 60 * 1000,
   });
 
-  const today = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", weekday: "long" });
+  // The site's own local date, not the viewer's — avoids showing
+  // "yesterday" or "tomorrow" to someone viewing from a timezone where
+  // it's already crossed midnight relative to the site.
+  const today = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", weekday: "long", timeZone: timezone });
 
   if (!enabled) {
     return (

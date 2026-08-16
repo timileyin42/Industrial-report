@@ -219,6 +219,7 @@ export function FleetDashboardPage() {
             lat={primarySiteHasLocation ? primarySite?.gps_lat : undefined}
             lng={primarySiteHasLocation ? primarySite?.gps_lng : undefined}
             siteName={primarySite?.name ?? primarySite?.site_id}
+            timezone={primarySite?.timezone}
           />
         </div>
       </div>
