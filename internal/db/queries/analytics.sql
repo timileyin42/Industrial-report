@@ -22,6 +22,25 @@ WHERE day >= $1 AND day <= $2
   )
 ORDER BY day, site_id, device_id;
 
+-- name: GetFleetPowerCurve :many
+-- Intraday "power right now, over time" curve — raw telemetry bucketed
+-- to 5-minute intervals and averaged across every device, optionally
+-- scoped to a cohort. Distinct from telemetry_daily (one row per
+-- calendar day): this reads the raw hypertable directly since the
+-- window is always short (a day or so), so pre-materializing it isn't
+-- worth the extra continuous aggregate. Feeds the Dashboard's
+-- "Generation Overview" Day view — a real sunrise-to-sunset power
+-- curve, not the daily energy totals every other fleet chart plots.
+SELECT time_bucket('5 minutes'::interval, ts)::timestamptz AS bucket, avg(power_kw)::double precision AS avg_power_kw
+FROM telemetry
+WHERE ts >= sqlc.arg('from')::timestamptz AND ts <= sqlc.arg('to')::timestamptz
+  AND (
+    sqlc.narg('cohort_id')::text IS NULL
+    OR site_id IN (SELECT site_id FROM sites WHERE cohort_id = sqlc.narg('cohort_id'))
+  )
+GROUP BY bucket
+ORDER BY bucket;
+
 -- name: GetRawEnergyReadingsForDeviceDay :many
 -- Reset-day fallback: ordered readings for one device on one day. The
 -- registry computes true daily energy as sum(max(0, e[i] - e[i-1])) over

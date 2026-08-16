@@ -307,6 +307,36 @@ func (h *handlers) fleetPerformanceRatio(c echo.Context) error {
 	})
 }
 
+type powerCurvePointResponse struct {
+	Bucket     time.Time `json:"bucket"`
+	AvgPowerKW float64   `json:"avg_power_kw"`
+}
+
+// fleetPowerCurve is the intraday sibling of fleetEnergy — plots
+// average power over 5-minute buckets across the requested window
+// (defaulting to the trailing 24h), rather than one energy total per
+// calendar day. Feeds the Dashboard's "Generation Overview" Day view.
+func (h *handlers) fleetPowerCurve(c echo.Context) error {
+	from, to, err := parseIntradayRange(c)
+	if err != nil {
+		return err
+	}
+	var cohortID *string
+	if v := c.QueryParam("cohort_id"); v != "" {
+		cohortID = &v
+	}
+
+	points, err := h.deps.Analytics.FleetPowerCurve(c.Request().Context(), cohortID, from, to)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	out := make([]powerCurvePointResponse, 0, len(points))
+	for _, p := range points {
+		out = append(out, powerCurvePointResponse{Bucket: p.Bucket, AvgPowerKW: p.AvgPowerKW})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"unit": "kW", "points": out})
+}
+
 func (h *handlers) currentGeneration(c echo.Context) error {
 	kw, err := h.deps.Fleet.CurrentGeneration(c.Request().Context())
 	if err != nil {

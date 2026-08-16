@@ -17,7 +17,7 @@ import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
 import { useAuth } from "../auth/AuthContext";
 import { getFleetSummary, getCurrentGeneration, getTopSitesToday } from "../api/fleet";
-import { getFleetEnergy } from "../api/analytics";
+import { getFleetEnergy, getFleetPowerCurve } from "../api/analytics";
 import { getFleetTrends } from "../api/benchmark";
 import { getFleetEmissions } from "../api/emissions";
 import { getFleetHealth } from "../api/fleetHealth";
@@ -99,6 +99,21 @@ export function FleetDashboardPage() {
   });
   const energyRange = rangeForEnergyTab(energyTab, referenceDate);
   const energyQuery = useQuery({ queryKey: ["fleet-energy", energyTab, referenceDateKey], queryFn: () => getFleetEnergy(energyRange) });
+  // Day view gets a real intraday power curve (sunrise-to-sunset shape)
+  // instead of the daily-total-energy trend Week/Month/Year use — see
+  // getFleetPowerCurve. Only refetches live when viewing today; a past
+  // day's curve is finished history and won't change.
+  const isViewingToday = referenceDateKey === new Date().toDateString();
+  const dayStart = new Date(referenceDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(referenceDate);
+  dayEnd.setHours(23, 59, 59, 999);
+  const powerCurveQuery = useQuery({
+    queryKey: ["fleet-power-curve", referenceDateKey],
+    queryFn: () => getFleetPowerCurve({ from: dayStart.toISOString(), to: (isViewingToday ? new Date() : dayEnd).toISOString() }),
+    enabled: energyTab === "day",
+    refetchInterval: energyTab === "day" && isViewingToday ? 60_000 : false,
+  });
   const trendsQuery = useQuery({ queryKey: ["fleet-trends-dash"], queryFn: () => getFleetTrends() });
   const emissionsQuery = useQuery({ queryKey: ["fleet-emissions-dash"], queryFn: () => getFleetEmissions(), retry: false });
   const healthQuery = useQuery({ queryKey: ["fleet-health-dash"], queryFn: () => getFleetHealth(undefined, 200) });
@@ -118,6 +133,7 @@ export function FleetDashboardPage() {
 
   const data = summaryQuery.data;
   const energyPoints = (energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
+  const powerCurvePoints = (powerCurveQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.avg_power_kw }));
   const latestTrend = trendsQuery.data?.points.at(-1) ?? null;
   const emissionsUnconfigured = emissionsQuery.error instanceof ApiError && emissionsQuery.error.status === 409;
   const primarySite = primarySiteQuery.data;
@@ -288,10 +304,28 @@ export function FleetDashboardPage() {
                 </div>
               </div>
               <p className="font-data-display-lg text-[20px] text-on-surface mb-2">
-                {energyQuery.data ? `${energyQuery.data.cumulative_kwh.toFixed(0)} kWh` : "—"}
+                {energyTab === "day"
+                  ? isViewingToday && todayEnergyKWh != null
+                    ? `${todayEnergyKWh.toFixed(0)} kWh`
+                    : powerCurvePoints.length
+                      ? // Trapezoid-free estimate from 5-minute average-power buckets: each
+                        // point represents 5 minutes, so kWh = sum(avg_kW) * (5/60).
+                        `${(powerCurvePoints.reduce((sum, p) => sum + p.y, 0) * (5 / 60)).toFixed(0)} kWh (est.)`
+                      : "—"
+                  : energyQuery.data
+                    ? `${energyQuery.data.cumulative_kwh.toFixed(0)} kWh`
+                    : "—"}
               </p>
               <div className="h-[180px]">
-                {energyQuery.isLoading ? (
+                {energyTab === "day" ? (
+                  powerCurveQuery.isLoading ? (
+                    <div className="h-full bg-surface-dim rounded-lg animate-pulse" />
+                  ) : powerCurvePoints.length < 2 ? (
+                    <EmptyState compact title="Not enough data yet" body="Today's generation curve will chart here once there are more readings." />
+                  ) : (
+                    <LineChart points={powerCurvePoints} color="#2f8fe0" />
+                  )
+                ) : energyQuery.isLoading ? (
                   <div className="h-full bg-surface-dim rounded-lg animate-pulse" />
                 ) : energyPoints.length < 2 ? (
                   <EmptyState compact title="Not enough data yet" body="Energy generation will chart here once there's more history." />

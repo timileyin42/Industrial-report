@@ -11,6 +11,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getFleetPowerCurve = `-- name: GetFleetPowerCurve :many
+SELECT time_bucket('5 minutes'::interval, ts)::timestamptz AS bucket, avg(power_kw)::double precision AS avg_power_kw
+FROM telemetry
+WHERE ts >= $1::timestamptz AND ts <= $2::timestamptz
+  AND (
+    $3::text IS NULL
+    OR site_id IN (SELECT site_id FROM sites WHERE cohort_id = $3)
+  )
+GROUP BY bucket
+ORDER BY bucket
+`
+
+type GetFleetPowerCurveParams struct {
+	From     pgtype.Timestamptz
+	To       pgtype.Timestamptz
+	CohortID pgtype.Text
+}
+
+type GetFleetPowerCurveRow struct {
+	Bucket     pgtype.Timestamptz
+	AvgPowerKw float64
+}
+
+// Intraday "power right now, over time" curve — raw telemetry bucketed
+// to 5-minute intervals and averaged across every device, optionally
+// scoped to a cohort. Distinct from telemetry_daily (one row per
+// calendar day): this reads the raw hypertable directly since the
+// window is always short (a day or so), so pre-materializing it isn't
+// worth the extra continuous aggregate. Feeds the Dashboard's
+// "Generation Overview" Day view — a real sunrise-to-sunset power
+// curve, not the daily energy totals every other fleet chart plots.
+func (q *Queries) GetFleetPowerCurve(ctx context.Context, arg GetFleetPowerCurveParams) ([]GetFleetPowerCurveRow, error) {
+	rows, err := q.db.Query(ctx, getFleetPowerCurve, arg.From, arg.To, arg.CohortID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetFleetPowerCurveRow
+	for rows.Next() {
+		var i GetFleetPowerCurveRow
+		if err := rows.Scan(&i.Bucket, &i.AvgPowerKw); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPeakReadingTimeForDeviceDay = `-- name: GetPeakReadingTimeForDeviceDay :one
 SELECT ts FROM telemetry
 WHERE device_id = $1 AND ts >= $2 AND ts < $3 AND power_kw = $4

@@ -5,11 +5,13 @@ import {
   PeakSeriesSchema,
   CapacityFactorSeriesSchema,
   PerformanceRatioSeriesSchema,
+  PowerCurveSchema,
   type EnergySeries,
   type YieldSeries,
   type PeakSeries,
   type CapacityFactorSeries,
   type PerformanceRatioSeries,
+  type PowerCurve,
 } from "./types";
 
 export type Period = "daily" | "weekly" | "monthly";
@@ -31,6 +33,15 @@ export async function getSiteEnergy(siteId: string, range: AnalyticsRange = {}):
 export async function getFleetEnergy(range: AnalyticsRange & { cohort_id?: string } = {}): Promise<EnergySeries> {
   const data = await apiRequest<unknown>("/v1/fleet/analytics/energy", { query: range });
   return EnergySeriesSchema.parse(data);
+}
+
+// Intraday power-over-time curve (5-minute buckets) — distinct from
+// getFleetEnergy's one-point-per-day totals. Powers the Dashboard's
+// "Generation Overview" Day view, which needs an actual sunrise-to-
+// sunset shape rather than a daily-total trend line.
+export async function getFleetPowerCurve(range: { from?: string; to?: string; cohort_id?: string } = {}): Promise<PowerCurve> {
+  const data = await apiRequest<unknown>("/v1/fleet/analytics/power-curve", { query: range });
+  return PowerCurveSchema.parse(data);
 }
 
 export async function getSiteSpecificYield(siteId: string, range: AnalyticsRange = {}): Promise<YieldSeries> {

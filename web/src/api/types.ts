@@ -116,6 +116,16 @@ export const EnergySeriesSchema = z.object({
 });
 export type EnergySeries = z.infer<typeof EnergySeriesSchema>;
 
+export const PowerCurvePointSchema = z.object({
+  bucket: z.string(),
+  avg_power_kw: z.number(),
+});
+export const PowerCurveSchema = z.object({
+  unit: z.string(),
+  points: z.array(PowerCurvePointSchema),
+});
+export type PowerCurve = z.infer<typeof PowerCurveSchema>;
+
 export const YieldPointSchema = z.object({
   period_start: z.string(),
   energy_kwh: z.number(),

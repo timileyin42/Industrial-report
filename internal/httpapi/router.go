@@ -144,6 +144,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/fleet/current-generation", h.currentGeneration, operatorOnly)
 	authed.GET("/fleet/top-sites", h.topSitesToday, operatorOnly)
 	authed.GET("/fleet/ingestion-status", h.ingestionStatus, operatorOnly)
+	authed.GET("/fleet/analytics/power-curve", h.fleetPowerCurve, operatorOnly)
 	authed.GET("/fleet/analytics/energy", h.fleetEnergy, operatorOnly)
 	authed.GET("/fleet/analytics/specific-yield", h.fleetSpecificYield, operatorOnly)
 	authed.GET("/fleet/analytics/performance-ratio", h.fleetPerformanceRatio, operatorOnly)

@@ -77,6 +77,34 @@ func parseAnalyticsRange(c echo.Context) (from, to time.Time, err error) {
 	return from, to, nil
 }
 
+// parseIntradayRange resolves [from, to] for a fine-grained (e.g.
+// 5-minute-bucketed) query — same "from"/"to" query params as
+// parseAnalyticsRange, but defaulting to the trailing 24 hours rather
+// than 30 days, since a 30-day default at intraday granularity would
+// be an enormous, mostly-pointless result set. Callers that want "just
+// today" pass explicit from/to (e.g. the Dashboard's Day view, whose
+// "today" is anchored to the site's own local calendar day, not UTC).
+func parseIntradayRange(c echo.Context) (from, to time.Time, err error) {
+	toPtr, err := parseDateParam(c, "to")
+	if err != nil {
+		return time.Time{}, time.Time{}, echo.NewHTTPError(http.StatusBadRequest, "invalid to date")
+	}
+	to = time.Now().UTC()
+	if toPtr != nil {
+		to = *toPtr
+	}
+
+	fromPtr, err := parseDateParam(c, "from")
+	if err != nil {
+		return time.Time{}, time.Time{}, echo.NewHTTPError(http.StatusBadRequest, "invalid from date")
+	}
+	from = to.Add(-24 * time.Hour)
+	if fromPtr != nil {
+		from = *fromPtr
+	}
+	return from, to, nil
+}
+
 func parseAsOf(c echo.Context) (time.Time, error) {
 	t, err := parseDateParam(c, "as_of")
 	if err != nil {

@@ -79,6 +79,15 @@ type Querier interface {
 	// concept in the schema.
 	GetEarliestOperator(ctx context.Context) (User, error)
 	GetExportJob(ctx context.Context, id int64) (ExportJob, error)
+	// Intraday "power right now, over time" curve — raw telemetry bucketed
+	// to 5-minute intervals and averaged across every device, optionally
+	// scoped to a cohort. Distinct from telemetry_daily (one row per
+	// calendar day): this reads the raw hypertable directly since the
+	// window is always short (a day or so), so pre-materializing it isn't
+	// worth the extra continuous aggregate. Feeds the Dashboard's
+	// "Generation Overview" Day view — a real sunrise-to-sunset power
+	// curve, not the daily energy totals every other fleet chart plots.
+	GetFleetPowerCurve(ctx context.Context, arg GetFleetPowerCurveParams) ([]GetFleetPowerCurveRow, error)
 	// Continuous aggregates can't express argmax, so the peak reading's time
 	// of day is resolved via a narrow indexed point lookup instead of a scan.
 	GetPeakReadingTimeForDeviceDay(ctx context.Context, arg GetPeakReadingTimeForDeviceDayParams) (pgtype.Timestamptz, error)

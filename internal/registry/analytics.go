@@ -321,6 +321,31 @@ func (a *Analytics) FleetEnergy(ctx context.Context, cohortID *string, period st
 	return bucketDailyRows(rows, period), nil
 }
 
+type PowerCurvePoint struct {
+	Bucket     time.Time
+	AvgPowerKW float64
+}
+
+// FleetPowerCurve is the intraday sibling of FleetEnergy — an
+// average-power-per-5-minutes curve across the requested window,
+// reading raw telemetry directly rather than a daily rollup, since the
+// window this is meant for (a single day) is always small.
+func (a *Analytics) FleetPowerCurve(ctx context.Context, cohortID *string, from, to time.Time) ([]PowerCurvePoint, error) {
+	rows, err := a.q.GetFleetPowerCurve(ctx, db.GetFleetPowerCurveParams{
+		From:     pgtype.Timestamptz{Time: from, Valid: true},
+		To:       pgtype.Timestamptz{Time: to, Valid: true},
+		CohortID: textOrNull(cohortID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PowerCurvePoint, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, PowerCurvePoint{Bucket: r.Bucket.Time, AvgPowerKW: r.AvgPowerKw})
+	}
+	return out, nil
+}
+
 type YieldPoint struct {
 	PeriodStart            time.Time
 	EnergyKWh              float64
