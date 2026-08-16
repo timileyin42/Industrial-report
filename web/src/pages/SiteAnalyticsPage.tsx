@@ -36,11 +36,11 @@ export function SiteAnalyticsPage() {
   const isOperator = session?.role === "operator";
 
   const siteQuery = useQuery({ queryKey: ["site", siteId], queryFn: () => getSite(siteId!), enabled: !!siteId });
-  const energyQuery = useQuery({ queryKey: ["site-energy", siteId], queryFn: () => getSiteEnergy(siteId!), enabled: !!siteId });
-  const yieldQuery = useQuery({ queryKey: ["site-yield", siteId], queryFn: () => getSiteSpecificYield(siteId!), enabled: !!siteId });
+  const energyQuery = useQuery({ queryKey: ["site-energy", siteId], queryFn: () => getSiteEnergy(siteId!, { period: "daily" }), enabled: !!siteId });
+  const yieldQuery = useQuery({ queryKey: ["site-yield", siteId], queryFn: () => getSiteSpecificYield(siteId!, { period: "daily" }), enabled: !!siteId });
   const peakQuery = useQuery({ queryKey: ["site-peak", siteId], queryFn: () => getSitePeak(siteId!), enabled: !!siteId });
-  const cfQuery = useQuery({ queryKey: ["site-cf", siteId], queryFn: () => getSiteCapacityFactor(siteId!), enabled: !!siteId });
-  const prQuery = useQuery({ queryKey: ["site-pr", siteId], queryFn: () => getSitePerformanceRatio(siteId!), enabled: !!siteId });
+  const cfQuery = useQuery({ queryKey: ["site-cf", siteId], queryFn: () => getSiteCapacityFactor(siteId!, { period: "daily" }), enabled: !!siteId });
+  const prQuery = useQuery({ queryKey: ["site-pr", siteId], queryFn: () => getSitePerformanceRatio(siteId!, { period: "daily" }), enabled: !!siteId });
   const emissionsQuery = useQuery({
     queryKey: ["site-emissions", siteId],
     queryFn: () => getSiteEmissions(siteId!),
