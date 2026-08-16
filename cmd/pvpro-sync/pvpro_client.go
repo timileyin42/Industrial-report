@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"context"
@@ -277,11 +278,18 @@ func (c *pvproClient) getInverters(ctx context.Context, plantID int64) ([]pvproI
 	return out.Data.Infos, nil
 }
 
-func (c *pvproClient) getFlow(ctx context.Context, inverterID int64) (pvproFlow, error) {
+// getFlow is keyed by the inverter's serial number, not its internal
+// numeric id — /api/v1/inverter/{id}/flow (id-keyed) always reports
+// existsBattery=false and 0 for every power field regardless of the
+// inverter's real state; only the SN-keyed path returns real data. This
+// endpoint also returns HTTP 200 with a body-level {"code":N,"msg":...}
+// on failure (e.g. code 2 "No Permissions"), so success must be
+// checked from the body, not the status code.
+func (c *pvproClient) getFlow(ctx context.Context, sn string) (pvproFlow, error) {
 	if err := c.ensureToken(ctx); err != nil {
 		return pvproFlow{}, err
 	}
-	url := fmt.Sprintf("%s/api/v1/inverter/%d/flow", c.baseURL, inverterID)
+	url := fmt.Sprintf("%s/api/v1/inverter/%s/flow", c.baseURL, sn)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	resp, err := c.httpClient.Do(req)
@@ -291,10 +299,115 @@ func (c *pvproClient) getFlow(ctx context.Context, inverterID int64) (pvproFlow,
 	defer resp.Body.Close()
 
 	var out struct {
-		Data pvproFlow `json:"data"`
+		Code    int       `json:"code"`
+		Msg     string    `json:"msg"`
+		Success bool      `json:"success"`
+		Data    pvproFlow `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return pvproFlow{}, err
 	}
+	if out.Code != 0 || !out.Success {
+		return pvproFlow{}, fmt.Errorf("flow for %s: %s (code %d)", sn, out.Msg, out.Code)
+	}
 	return out.Data, nil
+}
+
+// getPVVoltage reads the panel-string DC voltage(s) — a separate
+// endpoint from getFlow, which doesn't carry this field. A hybrid
+// inverter can have multiple independent MPPT strings; this averages
+// whatever strings are reporting rather than picking just the first,
+// since the UI shows one "Solar (PV), V" figure per device. Returns
+// ok=false (no error) when the inverter has no PV strings to report,
+// same "genuinely absent, not a fetch failure" distinction as
+// pvproFlow.ExistsBattery.
+func (c *pvproClient) getPVVoltage(ctx context.Context, sn string) (voltage float64, ok bool, err error) {
+	if err := c.ensureToken(ctx); err != nil {
+		return 0, false, err
+	}
+	url := fmt.Sprintf("%s/api/v1/inverter/%s/realtime/input", c.baseURL, sn)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, false, err
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			PVIV []struct {
+				Vpv string `json:"vpv"`
+			} `json:"pvIV"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, false, err
+	}
+	if out.Code != 0 {
+		return 0, false, fmt.Errorf("realtime input for %s: %s (code %d)", sn, out.Msg, out.Code)
+	}
+	var sum float64
+	var n int
+	for _, s := range out.Data.PVIV {
+		v, err := strconv.ParseFloat(s.Vpv, 64)
+		if err != nil {
+			continue
+		}
+		sum += v
+		n++
+	}
+	if n == 0 {
+		return 0, false, nil
+	}
+	return sum / float64(n), true, nil
+}
+
+// getOutputVoltage reads the inverter's AC output voltage(s) — a
+// hybrid inverter can be single or multi-phase; this averages
+// whatever phases are reporting, same rationale as getPVVoltage.
+func (c *pvproClient) getOutputVoltage(ctx context.Context, sn string) (voltage float64, ok bool, err error) {
+	if err := c.ensureToken(ctx); err != nil {
+		return 0, false, err
+	}
+	url := fmt.Sprintf("%s/api/v1/inverter/%s/realtime/output", c.baseURL, sn)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, false, err
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			VIP []struct {
+				Volt string `json:"volt"`
+			} `json:"vip"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, false, err
+	}
+	if out.Code != 0 {
+		return 0, false, fmt.Errorf("realtime output for %s: %s (code %d)", sn, out.Msg, out.Code)
+	}
+	var sum float64
+	var n int
+	for _, s := range out.Data.VIP {
+		v, err := strconv.ParseFloat(s.Volt, 64)
+		if err != nil {
+			continue
+		}
+		sum += v
+		n++
+	}
+	if n == 0 {
+		return 0, false, nil
+	}
+	return sum / float64(n), true, nil
 }

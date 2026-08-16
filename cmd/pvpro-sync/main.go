@@ -132,12 +132,26 @@ func runOnce(ctx context.Context, pv *pvproClient, ours *ourAPIClient, known map
 			time.Sleep(1500 * time.Millisecond) // spread out our own cloud-import calls, same rate class as any other public write endpoint
 		}
 		kd := known[item.deviceID]
-		flow, err := pv.getFlow(ctx, kd.inverterID)
+		flow, err := pv.getFlow(ctx, item.deviceID)
 		if err != nil {
-			log.Printf("pvpro: fetch flow for inverter %d (device %s): %v", kd.inverterID, item.deviceID, err)
+			log.Printf("pvpro: fetch flow for device %s: %v", item.deviceID, err)
 			continue
 		}
-		reading := buildReading(item.inv, flow)
+		// Voltage channels are separate PV Pro endpoints from getFlow —
+		// a fetch failure here is logged but doesn't drop the whole
+		// reading, since power/energy/battery data is still good.
+		var pvVoltage, outputVoltage *float64
+		if v, ok, err := pv.getPVVoltage(ctx, item.deviceID); err != nil {
+			log.Printf("pvpro: fetch PV voltage for device %s: %v", item.deviceID, err)
+		} else if ok {
+			pvVoltage = floatPtr(v)
+		}
+		if v, ok, err := pv.getOutputVoltage(ctx, item.deviceID); err != nil {
+			log.Printf("pvpro: fetch output voltage for device %s: %v", item.deviceID, err)
+		} else if ok {
+			outputVoltage = floatPtr(v)
+		}
+		reading := buildReading(item.inv, flow, pvVoltage, outputVoltage)
 		if err := submitReading(ctx, kd.token, ours.baseURL, item.deviceID, reading); err != nil {
 			log.Printf("pvpro: submit reading for device %s: %v", item.deviceID, err)
 			continue
@@ -242,6 +256,8 @@ type cloudReading struct {
 	PVPowerKW       *float64 `json:"pv_power_kw,omitempty"`
 	BatterySOCPct   *float64 `json:"battery_soc_pct,omitempty"`
 	BatteryVoltageV *float64 `json:"battery_voltage_v,omitempty"`
+	PVVoltageV      *float64 `json:"pv_voltage_v,omitempty"`
+	OutputVoltageV  *float64 `json:"output_voltage_v,omitempty"`
 }
 
 // buildReading maps PV Pro's field names onto ours. Power fields
@@ -262,13 +278,15 @@ type cloudReading struct {
 // style codes, not this status field) is the real fault signal; wiring
 // that up is future work, not something to fake with an unverified
 // guess.
-func buildReading(inv pvproInverter, flow pvproFlow) cloudReading {
+func buildReading(inv pvproInverter, flow pvproFlow, pvVoltage, outputVoltage *float64) cloudReading {
 	reading := cloudReading{
 		Timestamp:      inv.UpdateAt,
 		PowerKW:        inv.Pac / 1000.0,
 		EnergyKWhTotal: inv.Etotal,
 		Status:         "ok",
 		PVPowerKW:      floatPtr(flow.PVPower / 1000.0),
+		PVVoltageV:     pvVoltage,
+		OutputVoltageV: outputVoltage,
 	}
 	// A grid-tie-only inverter genuinely has no battery — PV Pro still
 	// returns soc/battV as 0 in that case, not null, so ExistsBattery is
