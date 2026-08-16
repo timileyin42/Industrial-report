@@ -135,7 +135,7 @@ export function SiteAnalyticsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
           <KpiCard
-            label="Energy (cumulative)"
+            label="Energy (Last 30 Days)"
             value={energyQuery.data ? energyQuery.data.cumulative_kwh.toFixed(1) : "—"}
             unit="kWh"
             icon={<TrendingUp size={16} className="text-primary" />}
