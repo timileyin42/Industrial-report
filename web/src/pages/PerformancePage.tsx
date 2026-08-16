@@ -19,8 +19,8 @@ type Anomaly = AnomalyResult["flags"][number];
 // Emissions/Reports section split. Site-level performance still lives on
 // SiteAnalyticsPage (reached from Site Detail), not duplicated here.
 export function PerformancePage() {
-  const yieldQuery = useQuery({ queryKey: ["fleet-yield"], queryFn: () => getFleetSpecificYield(), retry: false });
-  const prQuery = useQuery({ queryKey: ["fleet-pr"], queryFn: () => getFleetPerformanceRatio(), retry: false });
+  const yieldQuery = useQuery({ queryKey: ["fleet-yield"], queryFn: () => getFleetSpecificYield({ period: "daily" }), retry: false });
+  const prQuery = useQuery({ queryKey: ["fleet-pr"], queryFn: () => getFleetPerformanceRatio({ period: "daily" }), retry: false });
   const segmentQuery = useQuery({ queryKey: ["fleet-benchmark"], queryFn: () => getBenchmarkSegments() });
   const anomalyQuery = useQuery({ queryKey: ["fleet-anomalies"], queryFn: () => getFleetAnomalies() });
 

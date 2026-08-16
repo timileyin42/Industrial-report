@@ -15,7 +15,7 @@ import { ApiError } from "../api/types";
 // Fleet-wide generation view — split out of the former combined
 // FleetAnalyticsPage. Site-level energy still lives on SiteAnalyticsPage.
 export function EnergyPage() {
-  const energyQuery = useQuery({ queryKey: ["fleet-energy"], queryFn: () => getFleetEnergy() });
+  const energyQuery = useQuery({ queryKey: ["fleet-energy"], queryFn: () => getFleetEnergy({ period: "daily" }) });
   const trendsQuery = useQuery({ queryKey: ["fleet-trends"], queryFn: () => getFleetTrends() });
 
   if (energyQuery.error instanceof ApiError && energyQuery.error.status === 403) {
@@ -45,7 +45,7 @@ export function EnergyPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
           <KpiCard
-            label="Fleet Energy (cumulative)"
+            label="Fleet Energy (Last 30 Days)"
             value={energyQuery.data ? (energyQuery.data.cumulative_kwh / 1000).toFixed(2) : "—"}
             unit="MWh"
             tone="primary"
