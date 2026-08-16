@@ -295,7 +295,13 @@ func buildReading(inv pvproInverter, flow pvproFlow, pvVoltage, outputVoltage *f
 	// matches how SiteDetailPage already renders "—" for absent data.
 	if flow.ExistsBattery {
 		reading.BatterySOCPct = floatPtr(flow.SOC)
-		reading.BatteryVoltageV = floatPtr(flow.BattV)
+		// A multi-battery-pack site (batteryNum > 1) reports 0 in the
+		// top-level battV field — the real voltage is only in the
+		// per-pack batteryFlowDatas. BatteryVoltage() falls back to
+		// averaging those packs when the top-level field is 0.
+		if v, ok := flow.BatteryVoltage(); ok {
+			reading.BatteryVoltageV = floatPtr(v)
+		}
 	}
 	return reading
 }

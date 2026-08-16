@@ -85,6 +85,36 @@ type pvproFlow struct {
 	// from "battery reads 0 right now." Must be checked before treating
 	// SOC/BattV as real readings (see buildReading in main.go).
 	ExistsBattery bool `json:"existsBattery"`
+	// BatteryFlowDatas: when a site has more than one physical battery
+	// pack (batteryNum > 1), the top-level BattV above is 0 — the real
+	// per-pack voltage only shows up here. A single-pack site has BattV
+	// populated directly and doesn't need this fallback.
+	BatteryFlowDatas []struct {
+		Voltage float64 `json:"voltage"`
+	} `json:"batteryFlowDatas"`
+}
+
+// BatteryVoltage returns the best available battery voltage reading:
+// the top-level field when populated (single-pack sites), else the
+// average of whatever per-pack voltages are present (multi-pack
+// sites, where the top-level field is always 0).
+func (f pvproFlow) BatteryVoltage() (float64, bool) {
+	if f.BattV != 0 {
+		return f.BattV, true
+	}
+	var sum float64
+	var n int
+	for _, pack := range f.BatteryFlowDatas {
+		if pack.Voltage == 0 {
+			continue
+		}
+		sum += pack.Voltage
+		n++
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
 }
 
 func (c *pvproClient) ensureToken(ctx context.Context) error {
