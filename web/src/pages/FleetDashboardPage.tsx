@@ -381,36 +381,38 @@ export function FleetDashboardPage() {
                   <EmptyState compact title="No generation yet today" body="Top sites will rank here once today's readings come in." />
                 </div>
               ) : (
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr className="text-left text-on-surface-variant border-t border-outline-variant/60">
-                      <th className="px-6 py-2 font-label-caps text-label-caps">Site</th>
-                      <th className="px-3 py-2 font-label-caps text-label-caps text-right">Generation</th>
-                      <th className="px-3 py-2 font-label-caps text-label-caps text-right">Capacity</th>
-                      <th className="px-6 py-2 font-label-caps text-label-caps text-right">Specific Yield</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topSitesQuery.data.map((s) => (
-                      <tr key={s.site_id} className="border-t border-outline-variant/40 hover:bg-white/50 transition-colors">
-                        <td className="px-6 py-2.5">
-                          <Link to={`/app/sites/${s.site_id}`} className="text-on-surface hover:text-primary transition-colors">
-                            {s.name ?? s.site_id}
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface">
-                          {s.energy_kwh.toFixed(1)} kWh
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface-variant">
-                          {s.system_size_kw != null ? `${s.system_size_kw.toFixed(1)} kWp` : "—"}
-                        </td>
-                        <td className="px-6 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface-variant">
-                          {s.specific_yield_kwh_per_kwp.toFixed(2)} kWh/kWp
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-[13px]">
+                    <thead>
+                      <tr className="text-left text-on-surface-variant border-t border-outline-variant/60">
+                        <th className="px-6 py-2 font-label-caps text-label-caps">Site</th>
+                        <th className="px-3 py-2 font-label-caps text-label-caps text-right">Generation</th>
+                        <th className="px-3 py-2 font-label-caps text-label-caps text-right">Capacity</th>
+                        <th className="px-6 py-2 font-label-caps text-label-caps text-right">Specific Yield</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {topSitesQuery.data.map((s) => (
+                        <tr key={s.site_id} className="border-t border-outline-variant/40 hover:bg-white/50 transition-colors">
+                          <td className="px-6 py-2.5">
+                            <Link to={`/app/sites/${s.site_id}`} className="text-on-surface hover:text-primary transition-colors">
+                              {s.name ?? s.site_id}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface">
+                            {s.energy_kwh.toFixed(1)} kWh
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface-variant">
+                            {s.system_size_kw != null ? `${s.system_size_kw.toFixed(1)} kWp` : "—"}
+                          </td>
+                          <td className="px-6 py-2.5 text-right font-data-mono-sm text-data-mono-sm text-on-surface-variant">
+                            {s.specific_yield_kwh_per_kwp.toFixed(2)} kWh/kWp
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>

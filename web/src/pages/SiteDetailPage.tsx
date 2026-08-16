@@ -119,12 +119,12 @@ export function SiteDetailPage() {
       <TopNav title={site.name ?? site.site_id} />
       <div className="flex-1 p-grid-margin space-y-8">
         <div className="glass-card rounded-2xl p-6">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-primary-container flex items-center justify-center text-primary">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-12 h-12 shrink-0 rounded-xl bg-primary-container flex items-center justify-center text-primary">
                 <Factory size={28} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h4 className="font-headline-md text-headline-md text-on-surface">{site.name ?? site.site_id}</h4>
                   {site.is_primary && (
@@ -139,7 +139,7 @@ export function SiteDetailPage() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
               {isOperator && !site.is_primary && (
                 <button
                   type="button"
