@@ -197,11 +197,13 @@ export function FleetDashboardPage() {
             Your solar fleet {data && data.total_devices - data.online_devices === 0 ? "is performing well" : "needs a look"}
           </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <WeatherWidget
-            lat={primarySiteHasLocation ? primarySite?.gps_lat : undefined}
-            lng={primarySiteHasLocation ? primarySite?.gps_lng : undefined}
-            siteName={primarySite?.name ?? primarySite?.site_id}
+        <div className="flex flex-wrap items-center justify-end gap-3 ml-auto">
+          <ExportMenuButton
+            label="Export Report"
+            options={[
+              { label: "CSV", onExport: downloadFleetSummaryCSV },
+              { label: "PDF", onExport: downloadFleetSummaryPDF },
+            ]}
           />
           <label className="glass-card rounded-full flex items-center gap-2 px-4 py-2.5 cursor-pointer flex-shrink-0" title="Review the dashboard as of this date">
             <CalendarDays size={16} className="text-on-surface-variant" />
@@ -213,12 +215,10 @@ export function FleetDashboardPage() {
               className="bg-transparent text-[13px] text-on-surface outline-none font-data-mono-sm"
             />
           </label>
-          <ExportMenuButton
-            label="Export Report"
-            options={[
-              { label: "CSV", onExport: downloadFleetSummaryCSV },
-              { label: "PDF", onExport: downloadFleetSummaryPDF },
-            ]}
+          <WeatherWidget
+            lat={primarySiteHasLocation ? primarySite?.gps_lat : undefined}
+            lng={primarySiteHasLocation ? primarySite?.gps_lng : undefined}
+            siteName={primarySite?.name ?? primarySite?.site_id}
           />
         </div>
       </div>
