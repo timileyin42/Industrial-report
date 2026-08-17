@@ -11,6 +11,7 @@ import { getFleetEnergy } from "../api/analytics";
 import { getFleetTrends } from "../api/benchmark";
 import { downloadFleetSummaryCSV, downloadFleetSummaryPDF } from "../api/exports";
 import { ApiError } from "../api/types";
+import { excludeInProgressToday } from "../lib/completedDays";
 
 // Fleet-wide generation view — split out of the former combined
 // FleetAnalyticsPage. Site-level energy still lives on SiteAnalyticsPage.
@@ -25,7 +26,10 @@ export function EnergyPage() {
     return <ErrorState onRetry={() => energyQuery.refetch()} />;
   }
 
-  const energyPoints = (energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
+  // Today, still in progress, is excluded — including it always makes
+  // the most recent point look like a decline against yesterday's
+  // completed total, when it's really just "today isn't over yet."
+  const energyPoints = excludeInProgressToday(energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
   const trendPoints = (trendsQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.total_energy_kwh }));
 
   return (

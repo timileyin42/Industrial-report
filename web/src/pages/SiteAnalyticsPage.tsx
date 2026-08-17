@@ -18,6 +18,7 @@ import { getSiteAnomalies } from "../api/anomalies";
 import { downloadSiteTelemetryCSV, downloadSiteSummaryCSV, downloadSiteSummaryPDF } from "../api/exports";
 import { getSite } from "../api/sites";
 import { useAuth } from "../auth/AuthContext";
+import { excludeInProgressToday } from "../lib/completedDays";
 import { ApiError, type AnomalyResult } from "../api/types";
 type Anomaly = AnomalyResult["flags"][number];
 
@@ -95,9 +96,13 @@ export function SiteAnalyticsPage() {
   }
 
   const site = siteQuery.data;
-  const energyPoints = (energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
-  const yieldPoints = (yieldQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.specific_yield_kwh_per_kwp }));
-  const prPoints = (prQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.performance_ratio_pct }));
+  // Today, still in progress, is excluded from these completed-day trend
+  // charts — including it always makes the most recent point look like a
+  // decline, when it's really just "today isn't over yet." Today's real
+  // live figures are shown elsewhere (Dashboard KPIs, Day power curve).
+  const energyPoints = excludeInProgressToday(energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
+  const yieldPoints = excludeInProgressToday(yieldQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.specific_yield_kwh_per_kwp }));
+  const prPoints = excludeInProgressToday(prQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.performance_ratio_pct }));
   const latestPeak = peakQuery.data?.points.at(-1);
   const latestCF = cfQuery.data?.points.at(-1);
 

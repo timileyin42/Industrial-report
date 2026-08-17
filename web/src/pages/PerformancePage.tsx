@@ -11,6 +11,7 @@ import { getFleetSpecificYield, getFleetPerformanceRatio } from "../api/analytic
 import { getBenchmarkSegments } from "../api/benchmark";
 import { getFleetAnomalies } from "../api/anomalies";
 import { ApiError, type SegmentResult, type AnomalyResult } from "../api/types";
+import { excludeInProgressToday } from "../lib/completedDays";
 type Segment = SegmentResult["items"][number];
 type Anomaly = AnomalyResult["flags"][number];
 
@@ -31,8 +32,9 @@ export function PerformancePage() {
     return <ErrorState onRetry={() => segmentQuery.refetch()} />;
   }
 
-  const yieldPoints = (yieldQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.specific_yield_kwh_per_kwp }));
-  const prPoints = (prQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.performance_ratio_pct }));
+  // Today, still in progress, is excluded — same reasoning as EnergyPage.
+  const yieldPoints = excludeInProgressToday(yieldQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.specific_yield_kwh_per_kwp }));
+  const prPoints = excludeInProgressToday(prQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.performance_ratio_pct }));
 
   const segmentColumns: Column<Segment>[] = [
     { header: "Segment", render: (s) => s.segment_key },

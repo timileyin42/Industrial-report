@@ -27,6 +27,7 @@ import { listFleetAlerts } from "../api/alerts";
 import { downloadFleetSummaryCSV, downloadFleetSummaryPDF } from "../api/exports";
 import { ExportMenuButton } from "../components/export/ExportMenuButton";
 import { ApiError } from "../api/types";
+import { excludeInProgressPeriod } from "../lib/completedDays";
 
 // Light/glass redesign — replaces the earlier dark-industrial Fleet
 // Dashboard entirely. Every number here is real — the previous mockup's
@@ -132,7 +133,18 @@ export function FleetDashboardPage() {
   }
 
   const data = summaryQuery.data;
-  const energyPoints = (energyQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.energy_kwh }));
+  // Week/Month tabs are daily-bucketed multi-day trends — the current
+  // in-progress day is excluded, same reasoning as the site/fleet
+  // Analytics pages. Year is monthly-bucketed, same fix at that
+  // granularity. Day itself uses the separate intraday power curve
+  // below, which correctly wants today's still-accumulating shape.
+  const energyPoints =
+    energyTab === "day"
+      ? []
+      : excludeInProgressPeriod(energyQuery.data?.points ?? [], energyTab === "year" ? "monthly" : "daily").map((p, i) => ({
+          x: i,
+          y: p.energy_kwh,
+        }));
   const powerCurvePoints = (powerCurveQuery.data?.points ?? []).map((p, i) => ({ x: i, y: p.avg_power_kw }));
   // ~6 evenly spaced time-of-day ticks under the Day chart — hour alone
   // is enough (no date), since "Day" already means today (or whatever
