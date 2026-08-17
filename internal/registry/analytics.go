@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"log"
 	"sort"
 	"time"
 
@@ -339,9 +340,25 @@ func (a *Analytics) FleetPowerCurve(ctx context.Context, cohortID *string, from,
 	if err != nil {
 		return nil, err
 	}
+	raw := make([]float64, len(rows))
+	for i, r := range rows {
+		raw[i] = r.AvgPowerKw
+	}
+	// A vendor-side glitch can report ~0 for a single 5-minute bucket
+	// mid-day despite real, unchanged generation either side of it (seen
+	// in production: 31.18 -> 0 -> 28.85 kW across three consecutive
+	// polls) — smoothed here so the Dashboard's Day curve doesn't show a
+	// fake instantaneous crash. Logged so how often this actually
+	// happens stays visible rather than silently fixed.
+	smoothedValues, changed := domain.SmoothIsolatedDips(raw)
+	for _, i := range changed {
+		log.Printf("registry: smoothed isolated power glitch at bucket %s: %.2f kW -> %.2f kW",
+			rows[i].Bucket.Time.Format(time.RFC3339), raw[i], smoothedValues[i])
+	}
+
 	out := make([]PowerCurvePoint, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, PowerCurvePoint{Bucket: r.Bucket.Time, AvgPowerKW: r.AvgPowerKw})
+	for i, r := range rows {
+		out = append(out, PowerCurvePoint{Bucket: r.Bucket.Time, AvgPowerKW: smoothedValues[i]})
 	}
 	return out, nil
 }

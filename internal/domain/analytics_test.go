@@ -37,3 +37,37 @@ func TestDailyEnergyFromReadings(t *testing.T) {
 		})
 	}
 }
+
+func TestSmoothIsolatedDips(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      []float64
+		want    []float64
+		changed []int
+	}{
+		{"too short", []float64{5, 0}, []float64{5, 0}, nil},
+		// Real production incident: 31.18 -> 0 -> 28.85 kW across three
+		// consecutive 5-minute polls — the middle 0 is replaced with the
+		// average of its neighbors so the power curve stays continuous
+		// instead of showing a fake instantaneous crash to zero.
+		{"isolated power glitch", []float64{31.18, 0, 28.85}, []float64{31.18, 30.015, 28.85}, []int{1}},
+		{"no glitch, steady climb", []float64{10, 12, 14, 16}, []float64{10, 12, 14, 16}, nil},
+		// A real sustained drop (two low readings in a row) is left
+		// untouched — same "isolated means exactly one point" rule as
+		// filterSpuriousDips.
+		{"sustained drop untouched", []float64{20, 0, 0, 22}, []float64{20, 0, 0, 22}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, changed := SmoothIsolatedDips(c.in)
+			for i := range got {
+				if math.Abs(got[i]-c.want[i]) > 1e-6 {
+					t.Errorf("SmoothIsolatedDips(%v)[%d] = %v, want %v", c.in, i, got[i], c.want[i])
+				}
+			}
+			if len(changed) != len(c.changed) {
+				t.Errorf("SmoothIsolatedDips(%v) changed = %v, want %v", c.in, changed, c.changed)
+			}
+		})
+	}
+}

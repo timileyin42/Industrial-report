@@ -44,6 +44,31 @@ func filterSpuriousDips(readings []float64) []float64 {
 	return out
 }
 
+// SmoothIsolatedDips is filterSpuriousDips' display-oriented sibling:
+// same "isolated single-point dip surrounded by two similar, much
+// higher neighbors" detection, but for a point-in-time series (like
+// power readings) where dropping the bucket entirely would misalign a
+// chart's time axis. The glitched value is replaced with the average
+// of its neighbors instead, so the series stays continuous and the
+// same length, rather than showing a fake instantaneous crash to zero.
+// Returns the smoothed series and the indices that were changed, for
+// logging/visibility into how often the upstream data glitches.
+func SmoothIsolatedDips(readings []float64) (smoothed []float64, changedIndices []int) {
+	if len(readings) < 3 {
+		return readings, nil
+	}
+	out := make([]float64, len(readings))
+	copy(out, readings)
+	for i := 1; i < len(readings)-1; i++ {
+		prev, cur, next := readings[i-1], readings[i], readings[i+1]
+		if cur < prev*0.5 && cur < next*0.5 && next >= prev*0.9 {
+			out[i] = (prev + next) / 2
+			changedIndices = append(changedIndices, i)
+		}
+	}
+	return out, changedIndices
+}
+
 // DailyEnergyFromReadings computes a day's true generated energy from
 // ordered (by ts) cumulative energy_kwh_total readings, correctly handling
 // a counter reset within the day: summing only positive deltas captures
