@@ -74,10 +74,25 @@ export function FleetMiniMap({
         else if (health.online_devices === 0) color = "#e4483a";
       }
       const position = { lat: site.gps_lat!, lng: site.gps_lng! };
+      // Device count badge in the pin's round head — mirrors the design
+      // mockup's numbered site markers, but counts what's actually
+      // meaningful with real data today (devices at this site) rather
+      // than a geographic cluster count, which needs many nearby sites
+      // to ever show anything but "1".
+      const deviceCount = health?.total_devices;
       const marker = new google.maps.Marker({
         position,
         map,
         title: site.name ?? site.site_id,
+        label:
+          deviceCount != null
+            ? {
+                text: String(deviceCount),
+                color: "#ffffff",
+                fontSize: compact ? "9px" : "11px",
+                fontWeight: "bold",
+              }
+            : undefined,
         icon: {
           // Classic teardrop location-pin silhouette (same glyph as the
           // sidebar's "Sites" nav icon) — flat status-colored dots read
@@ -91,6 +106,7 @@ export function FleetMiniMap({
           strokeColor: "#ffffff",
           strokeWeight: 1.5,
           anchor: new google.maps.Point(12, 24),
+          labelOrigin: new google.maps.Point(12, 8.5),
         },
       });
       if (onSiteClick) marker.addListener("click", () => onSiteClick(site.site_id));
