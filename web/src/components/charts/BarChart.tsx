@@ -26,20 +26,44 @@ export function BarChart({
   }
 
   const width = 1000;
+  const yAxisWidth = 70; // reserved for the 0/25%/50%/75%/100% value labels
+  const plotWidth = width - yAxisWidth;
   const gap = 6;
-  const barWidth = width / points.length - gap;
+  const barWidth = plotWidth / points.length - gap;
   const maxValue = Math.max(...points.map((p) => p.value), 1);
   const plotHeight = height - 24; // reserve room for x-axis labels
 
   return (
     <div className="relative h-full w-full">
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="w-full h-full overflow-visible">
-        {[0.25, 0.5, 0.75].map((f) => (
-          <line key={f} x1={0} x2={width} y1={plotHeight * f} y2={plotHeight * f} stroke="#404944" strokeDasharray="4 4" strokeWidth={1} />
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+          <g key={f}>
+            {f > 0 && (
+              <line
+                x1={yAxisWidth}
+                x2={width}
+                y1={plotHeight * (1 - f)}
+                y2={plotHeight * (1 - f)}
+                stroke="#404944"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
+            )}
+            <text
+              x={yAxisWidth - 10}
+              y={plotHeight * (1 - f) + 5}
+              textAnchor="end"
+              fontSize={15}
+              fill="#64748b"
+              className="font-data-mono-sm"
+            >
+              {valueFormatter(maxValue * f)}
+            </text>
+          </g>
         ))}
         {points.map((p, i) => {
           const barHeight = Math.max((p.value / maxValue) * plotHeight, 2);
-          const x = i * (barWidth + gap) + gap / 2;
+          const x = yAxisWidth + i * (barWidth + gap) + gap / 2;
           const y = plotHeight - barHeight;
           const isHovered = hovered === i;
           return (
@@ -73,7 +97,10 @@ export function BarChart({
       {hovered !== null && (
         <div
           className="absolute -top-2 -translate-y-full glass-card rounded-lg px-3 py-1.5 text-[12px] text-on-surface pointer-events-none whitespace-nowrap"
-          style={{ left: `${((hovered + 0.5) / points.length) * 100}%`, transform: "translate(-50%, -100%)" }}
+          style={{
+            left: `${((yAxisWidth + (hovered + 0.5) * (plotWidth / points.length)) / width) * 100}%`,
+            transform: "translate(-50%, -100%)",
+          }}
         >
           <span className="font-semibold">{points[hovered].label}</span>: {valueFormatter(points[hovered].value)}
         </div>
