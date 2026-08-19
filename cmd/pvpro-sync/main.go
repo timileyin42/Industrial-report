@@ -258,6 +258,8 @@ type cloudReading struct {
 	BatteryVoltageV *float64 `json:"battery_voltage_v,omitempty"`
 	PVVoltageV      *float64 `json:"pv_voltage_v,omitempty"`
 	OutputVoltageV  *float64 `json:"output_voltage_v,omitempty"`
+	LoadPowerKW     *float64 `json:"load_power_kw,omitempty"`
+	GridPowerKW     *float64 `json:"grid_power_kw,omitempty"`
 }
 
 // buildReading maps PV Pro's field names onto ours. Power fields
@@ -302,6 +304,14 @@ func buildReading(inv pvproInverter, flow pvproFlow, pvVoltage, outputVoltage *f
 		if v, ok := flow.BatteryVoltage(); ok {
 			reading.BatteryVoltageV = floatPtr(v)
 		}
+	}
+	// Same "absent, not zero" distinction for a site with no
+	// load-monitoring CT or no grid meter/connection.
+	if flow.ExistsLoad {
+		reading.LoadPowerKW = floatPtr(flow.LoadPower / 1000.0)
+	}
+	if flow.ExistsGrid {
+		reading.GridPowerKW = floatPtr(flow.GridPower / 1000.0)
 	}
 	return reading
 }

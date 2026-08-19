@@ -361,6 +361,8 @@ type Telemetry struct {
 	BatteryVoltageV pgtype.Float8
 	PvVoltageV      pgtype.Float8
 	OutputVoltageV  pgtype.Float8
+	LoadPowerKw     pgtype.Float8
+	GridPowerKw     pgtype.Float8
 }
 
 type TelemetryDaily struct {

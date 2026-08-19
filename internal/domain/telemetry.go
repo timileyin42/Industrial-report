@@ -35,6 +35,13 @@ type TelemetryPayload struct {
 	BatteryVoltageV *float64 `json:"battery_voltage_v,omitempty"`
 	PVVoltageV      *float64 `json:"pv_voltage_v,omitempty"`
 	OutputVoltageV  *float64 `json:"output_voltage_v,omitempty"`
+	// LoadPowerKW is household consumption — always non-negative, same
+	// as PV/AC power. GridPowerKW is deliberately unvalidated beyond
+	// being present: unlike every other power field here, it's
+	// legitimately signed (importing from vs. exporting to the grid),
+	// so there's no single "must be non-negative" rule that applies.
+	LoadPowerKW *float64 `json:"load_power_kw,omitempty"`
+	GridPowerKW *float64 `json:"grid_power_kw,omitempty"`
 }
 
 const (
@@ -78,6 +85,9 @@ func (p TelemetryPayload) Validate(maxPlausibleKW float64) (time.Time, error) {
 	}
 	if p.BatterySOCPct != nil && (*p.BatterySOCPct < 0 || *p.BatterySOCPct > 100) {
 		return time.Time{}, fmt.Errorf("battery_soc_pct %v out of range 0-100", *p.BatterySOCPct)
+	}
+	if p.LoadPowerKW != nil && *p.LoadPowerKW < 0 {
+		return time.Time{}, fmt.Errorf("load_power_kw cannot be negative: %v", *p.LoadPowerKW)
 	}
 	switch p.Status {
 	case StatusOK, StatusFault, StatusOffline:

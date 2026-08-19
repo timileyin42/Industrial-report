@@ -60,6 +60,8 @@ CREATE TABLE telemetry (
     battery_voltage_v double precision,
     pv_voltage_v      double precision,
     output_voltage_v  double precision,
+    load_power_kw     double precision,
+    grid_power_kw     double precision,
     PRIMARY KEY (device_id, ts)
 );
 

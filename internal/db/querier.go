@@ -39,6 +39,18 @@ type Querier interface {
 	CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserActionAuditLog(ctx context.Context, arg CreateUserActionAuditLogParams) error
+	// Same live "most recent reading per online device" shape as
+	// CurrentFleetGeneration, extended to the rest of the Energy Flow
+	// widget: solar (PV-side, distinct from AC power above), load
+	// (household consumption), grid (signed — import positive, export
+	// negative, so summing nets out correctly across sites), and average
+	// battery SOC across whatever devices actually have a battery.
+	// battery_reporting_count is a separate, always-non-null column rather
+	// than trusting avg_battery_soc_pct's own nullability (sqlc's static
+	// analyzer, with no live DB connection configured, doesn't reliably
+	// infer nullability through an aggregate) — the caller checks count > 0
+	// to distinguish "no device has a battery" from "battery at 0%."
+	CurrentFleetFlow(ctx context.Context, onlineCutoff pgtype.Timestamptz) (CurrentFleetFlowRow, error)
 	// Sum of the most recent power_kw reading per online (not revoked,
 	// contacted within the online threshold) device — a live "how much
 	// power right now" figure, distinct from any cumulative/historical

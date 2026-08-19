@@ -44,8 +44,8 @@ func (q *Queries) GetDeviceWithSiteContext(ctx context.Context, deviceID string)
 const insertTelemetryReading = `-- name: InsertTelemetryReading :execrows
 INSERT INTO telemetry (
     device_id, site_id, ts, power_kw, energy_kwh_total, voltage_v, status, provenance, quality_flags, rssi,
-    pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+    pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v, load_power_kw, grid_power_kw
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 ON CONFLICT (device_id, ts) DO NOTHING
 `
 
@@ -65,6 +65,8 @@ type InsertTelemetryReadingParams struct {
 	BatteryVoltageV pgtype.Float8
 	PvVoltageV      pgtype.Float8
 	OutputVoltageV  pgtype.Float8
+	LoadPowerKw     pgtype.Float8
+	GridPowerKw     pgtype.Float8
 }
 
 func (q *Queries) InsertTelemetryReading(ctx context.Context, arg InsertTelemetryReadingParams) (int64, error) {
@@ -84,6 +86,8 @@ func (q *Queries) InsertTelemetryReading(ctx context.Context, arg InsertTelemetr
 		arg.BatteryVoltageV,
 		arg.PvVoltageV,
 		arg.OutputVoltageV,
+		arg.LoadPowerKw,
+		arg.GridPowerKw,
 	)
 	if err != nil {
 		return 0, err
@@ -93,7 +97,7 @@ func (q *Queries) InsertTelemetryReading(ctx context.Context, arg InsertTelemetr
 
 const listTelemetryForSite = `-- name: ListTelemetryForSite :many
 SELECT ts, power_kw, energy_kwh_total, voltage_v, status, device_id, rssi,
-       pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v
+       pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v, load_power_kw, grid_power_kw
 FROM telemetry
 WHERE site_id = $1
   AND ($2::timestamptz IS NULL OR ts >= $2)
@@ -128,6 +132,8 @@ type ListTelemetryForSiteRow struct {
 	BatteryVoltageV pgtype.Float8
 	PvVoltageV      pgtype.Float8
 	OutputVoltageV  pgtype.Float8
+	LoadPowerKw     pgtype.Float8
+	GridPowerKw     pgtype.Float8
 }
 
 // Keyset pagination on (ts, device_id) DESC. cursor_ts NULL means first page.
@@ -161,6 +167,8 @@ func (q *Queries) ListTelemetryForSite(ctx context.Context, arg ListTelemetryFor
 			&i.BatteryVoltageV,
 			&i.PvVoltageV,
 			&i.OutputVoltageV,
+			&i.LoadPowerKw,
+			&i.GridPowerKw,
 		); err != nil {
 			return nil, err
 		}

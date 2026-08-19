@@ -142,6 +142,7 @@ func NewRouter(deps Deps) *echo.Echo {
 	// Phase 3 — analytics/KPIs (fleet-wide, operator-only: cross-site
 	// comparisons leak fleet-wide distribution by construction)
 	authed.GET("/fleet/current-generation", h.currentGeneration, operatorOnly)
+	authed.GET("/fleet/current-flow", h.currentFlow, operatorOnly)
 	authed.GET("/fleet/top-sites", h.topSitesToday, operatorOnly)
 	authed.GET("/fleet/ingestion-status", h.ingestionStatus, operatorOnly)
 	authed.GET("/fleet/analytics/power-curve", h.fleetPowerCurve, operatorOnly)

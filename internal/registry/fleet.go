@@ -180,6 +180,31 @@ func (f *Fleet) CurrentGeneration(ctx context.Context) (float64, error) {
 	return f.devices.q.CurrentFleetGeneration(ctx, pgtype.Timestamptz{Time: cutoff, Valid: true})
 }
 
+// CurrentFlow is the Energy Flow widget's live snapshot — solar/load/
+// grid power and average battery SOC across online devices right now,
+// same "latest reading per device" liveness as CurrentGeneration.
+// AvgBatterySOCPct is nil when no online device currently reports a
+// battery, distinguishing "no battery data" from "battery at 0%."
+type CurrentFlow struct {
+	SolarKW          float64
+	LoadKW           float64
+	GridKW           float64
+	AvgBatterySOCPct *float64
+}
+
+func (f *Fleet) CurrentFlow(ctx context.Context) (CurrentFlow, error) {
+	cutoff := time.Now().UTC().Add(-f.onlineThreshold)
+	row, err := f.devices.q.CurrentFleetFlow(ctx, pgtype.Timestamptz{Time: cutoff, Valid: true})
+	if err != nil {
+		return CurrentFlow{}, err
+	}
+	var soc *float64
+	if row.BatteryReportingCount > 0 {
+		soc = &row.AvgBatterySocPct
+	}
+	return CurrentFlow{SolarKW: row.SolarKw, LoadKW: row.LoadKw, GridKW: row.GridKw, AvgBatterySOCPct: soc}, nil
+}
+
 func coveragePct(actual int64, expected float64) float64 {
 	if expected <= 0 {
 		return 0

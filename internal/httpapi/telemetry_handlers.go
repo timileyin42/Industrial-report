@@ -24,6 +24,8 @@ type telemetryPointResponse struct {
 	BatteryVoltageV *float64 `json:"battery_voltage_v,omitempty"`
 	PVVoltageV      *float64 `json:"pv_voltage_v,omitempty"`
 	OutputVoltageV  *float64 `json:"output_voltage_v,omitempty"`
+	LoadPowerKW     *float64 `json:"load_power_kw,omitempty"`
+	GridPowerKW     *float64 `json:"grid_power_kw,omitempty"`
 }
 
 // listTelemetry replaces Phase 0's unbounded 24h scan with an auth-gated,
@@ -69,6 +71,8 @@ func (h *handlers) listTelemetry(c echo.Context) error {
 			BatteryVoltageV: float8Ptr(r.BatteryVoltageV),
 			PVVoltageV:      float8Ptr(r.PvVoltageV),
 			OutputVoltageV:  float8Ptr(r.OutputVoltageV),
+			LoadPowerKW:     float8Ptr(r.LoadPowerKw),
+			GridPowerKW:     float8Ptr(r.GridPowerKw),
 		})
 	}
 	return c.JSON(http.StatusOK, pageResponse[telemetryPointResponse]{Items: items, NextCursor: next})

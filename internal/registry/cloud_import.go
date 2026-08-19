@@ -99,6 +99,8 @@ type CloudReading struct {
 	BatteryVoltageV *float64
 	PVVoltageV      *float64
 	OutputVoltageV  *float64
+	LoadPowerKW     *float64
+	GridPowerKW     *float64
 }
 
 type CloudReadingResult struct {
@@ -177,6 +179,8 @@ func (c *CloudImport) SubmitReadings(ctx context.Context, deviceID, token string
 			BatteryVoltageV: r.BatteryVoltageV,
 			PVVoltageV:      r.PVVoltageV,
 			OutputVoltageV:  r.OutputVoltageV,
+			LoadPowerKW:     r.LoadPowerKW,
+			GridPowerKW:     r.GridPowerKW,
 		}
 
 		ts, err := payload.Validate(ceiling)
@@ -211,6 +215,8 @@ func (c *CloudImport) SubmitReadings(ctx context.Context, deviceID, token string
 			BatteryVoltageV: float8OrNull(r.BatteryVoltageV),
 			PvVoltageV:      float8OrNull(r.PVVoltageV),
 			OutputVoltageV:  float8OrNull(r.OutputVoltageV),
+			LoadPowerKw:     float8OrNull(r.LoadPowerKW),
+			GridPowerKw:     float8OrNull(r.GridPowerKW),
 		})
 		if err != nil {
 			res.RejectionReason = "insert failed: " + err.Error()

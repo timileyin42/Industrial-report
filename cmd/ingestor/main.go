@@ -197,13 +197,14 @@ func handleMessage(ctx context.Context, pool *pgxpool.Pool, topic string, raw []
 	_, err = pool.Exec(ctx,
 		`INSERT INTO telemetry (
 			device_id, site_id, ts, power_kw, energy_kwh_total, voltage_v, status, provenance, quality_flags, rssi,
-			pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v
+			pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v, load_power_kw, grid_power_kw
 		 )
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		 ON CONFLICT (device_id, ts) DO NOTHING`,
 		deviceID, siteID, ts, payload.PowerKW, payload.EnergyKWhTotal, payload.VoltageV, coalesceStatus(payload.Status),
 		string(provenance), qualityFlags, payload.RSSI,
 		payload.PVPowerKW, payload.BatterySOCPct, payload.BatteryVoltageV, payload.PVVoltageV, payload.OutputVoltageV,
+		payload.LoadPowerKW, payload.GridPowerKW,
 	)
 	if err != nil {
 		markAuditError(ctx, pool, auditID, "insert: "+err.Error())

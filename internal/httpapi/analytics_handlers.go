@@ -345,6 +345,21 @@ func (h *handlers) currentGeneration(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"current_power_kw": kw})
 }
 
+// currentFlow feeds the Dashboard's Energy Flow widget — a live
+// snapshot, same liveness rule as currentGeneration, not a rollup.
+func (h *handlers) currentFlow(c echo.Context) error {
+	flow, err := h.deps.Fleet.CurrentFlow(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"solar_kw":            flow.SolarKW,
+		"load_kw":             flow.LoadKW,
+		"grid_kw":             flow.GridKW,
+		"avg_battery_soc_pct": flow.AvgBatterySOCPct,
+	})
+}
+
 type topSiteResponse struct {
 	SiteID                 string   `json:"site_id"`
 	Name                   *string  `json:"name,omitempty"`

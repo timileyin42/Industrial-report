@@ -16,7 +16,7 @@ import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
 import { AccessDenied } from "../components/feedback/AccessDenied";
 import { useAuth } from "../auth/AuthContext";
-import { getFleetSummary, getCurrentGeneration, getTopSitesToday } from "../api/fleet";
+import { getFleetSummary, getCurrentGeneration, getCurrentFlow, getTopSitesToday } from "../api/fleet";
 import { getFleetEnergy, getFleetPowerCurve } from "../api/analytics";
 import { getFleetTrends } from "../api/benchmark";
 import { getFleetEmissions } from "../api/emissions";
@@ -85,6 +85,7 @@ export function FleetDashboardPage() {
 
   const summaryQuery = useQuery({ queryKey: ["fleet-summary"], queryFn: getFleetSummary });
   const currentGenQuery = useQuery({ queryKey: ["fleet-current-gen"], queryFn: getCurrentGeneration, refetchInterval: 30_000 });
+  const currentFlowQuery = useQuery({ queryKey: ["fleet-current-flow"], queryFn: getCurrentFlow, refetchInterval: 30_000 });
   // Last 7 daily buckets ending at referenceDate — doubles as (a)
   // today-vs-yesterday for the KPI deltas below and (b) the Energy &
   // Emissions Summary bar chart's data, rather than fetching the same
@@ -596,9 +597,27 @@ export function FleetDashboardPage() {
               <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Energy Flow</span>
               <EnergyFlowIllustration
                 solar={{ label: "Solar Generation", value: energyQuery.data ? `${(energyQuery.data.cumulative_kwh / 1000).toFixed(2)} MWh` : "—", available: !!energyQuery.data }}
-                battery={{ label: "Battery Storage", value: "—", available: false }}
-                grid={{ label: "Grid Import/Export", value: "—", available: false }}
-                consumption={{ label: "Consumption", value: "—", available: false }}
+                battery={{
+                  label: "Battery Storage",
+                  value: currentFlowQuery.data?.avg_battery_soc_pct != null ? `${currentFlowQuery.data.avg_battery_soc_pct.toFixed(0)}%` : "—",
+                  available: currentFlowQuery.data?.avg_battery_soc_pct != null,
+                }}
+                grid={{
+                  // Sign convention per PV Pro's gridOrMeterPower: positive
+                  // = drawing from the grid, negative = exporting excess
+                  // solar back to it — flag back if a real export event
+                  // ever shows the opposite of what's expected here.
+                  label: "Grid Import/Export",
+                  value: currentFlowQuery.data
+                    ? `${Math.abs(currentFlowQuery.data.grid_kw).toFixed(1)} kW ${currentFlowQuery.data.grid_kw < 0 ? "Export" : "Import"}`
+                    : "—",
+                  available: !!currentFlowQuery.data,
+                }}
+                consumption={{
+                  label: "Consumption",
+                  value: currentFlowQuery.data ? `${currentFlowQuery.data.load_kw.toFixed(1)} kW` : "—",
+                  available: !!currentFlowQuery.data,
+                }}
                 animated={false}
                 height={220}
               />

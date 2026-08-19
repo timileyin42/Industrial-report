@@ -95,6 +95,53 @@ func (q *Queries) CreateDevice(ctx context.Context, arg CreateDeviceParams) (Dev
 	return i, err
 }
 
+const currentFleetFlow = `-- name: CurrentFleetFlow :one
+SELECT
+    coalesce(sum(latest.pv_power_kw), 0)::double precision AS solar_kw,
+    coalesce(sum(latest.load_power_kw), 0)::double precision AS load_kw,
+    coalesce(sum(latest.grid_power_kw), 0)::double precision AS grid_kw,
+    coalesce(avg(latest.battery_soc_pct), 0)::double precision AS avg_battery_soc_pct,
+    count(latest.battery_soc_pct)::bigint AS battery_reporting_count
+FROM devices d
+JOIN LATERAL (
+    SELECT pv_power_kw, load_power_kw, grid_power_kw, battery_soc_pct
+    FROM telemetry t WHERE t.device_id = d.device_id ORDER BY t.ts DESC LIMIT 1
+) latest ON true
+WHERE d.revoked_at IS NULL AND d.last_contact_at > $1::timestamptz
+`
+
+type CurrentFleetFlowRow struct {
+	SolarKw               float64
+	LoadKw                float64
+	GridKw                float64
+	AvgBatterySocPct      float64
+	BatteryReportingCount int64
+}
+
+// Same live "most recent reading per online device" shape as
+// CurrentFleetGeneration, extended to the rest of the Energy Flow
+// widget: solar (PV-side, distinct from AC power above), load
+// (household consumption), grid (signed — import positive, export
+// negative, so summing nets out correctly across sites), and average
+// battery SOC across whatever devices actually have a battery.
+// battery_reporting_count is a separate, always-non-null column rather
+// than trusting avg_battery_soc_pct's own nullability (sqlc's static
+// analyzer, with no live DB connection configured, doesn't reliably
+// infer nullability through an aggregate) — the caller checks count > 0
+// to distinguish "no device has a battery" from "battery at 0%."
+func (q *Queries) CurrentFleetFlow(ctx context.Context, onlineCutoff pgtype.Timestamptz) (CurrentFleetFlowRow, error) {
+	row := q.db.QueryRow(ctx, currentFleetFlow, onlineCutoff)
+	var i CurrentFleetFlowRow
+	err := row.Scan(
+		&i.SolarKw,
+		&i.LoadKw,
+		&i.GridKw,
+		&i.AvgBatterySocPct,
+		&i.BatteryReportingCount,
+	)
+	return i, err
+}
+
 const currentFleetGeneration = `-- name: CurrentFleetGeneration :one
 SELECT coalesce(sum(latest.power_kw), 0)::double precision AS current_power_kw
 FROM devices d

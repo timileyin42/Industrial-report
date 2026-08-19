@@ -43,6 +43,8 @@ type cloudReadingRequest struct {
 	BatteryVoltageV *float64 `json:"battery_voltage_v,omitempty"`
 	PVVoltageV      *float64 `json:"pv_voltage_v,omitempty"`
 	OutputVoltageV  *float64 `json:"output_voltage_v,omitempty"`
+	LoadPowerKW     *float64 `json:"load_power_kw,omitempty"`
+	GridPowerKW     *float64 `json:"grid_power_kw,omitempty"`
 }
 
 type submitCloudReadingsRequest struct {
@@ -97,6 +99,8 @@ func (h *handlers) submitCloudReadings(c echo.Context) error {
 			BatteryVoltageV: r.BatteryVoltageV,
 			PVVoltageV:      r.PVVoltageV,
 			OutputVoltageV:  r.OutputVoltageV,
+			LoadPowerKW:     r.LoadPowerKW,
+			GridPowerKW:     r.GridPowerKW,
 		})
 	}
 

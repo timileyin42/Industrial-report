@@ -18,15 +18,15 @@ SELECT energy_kwh_total FROM telemetry WHERE device_id = $1 AND ts < $2 ORDER BY
 -- name: InsertTelemetryReading :execrows
 INSERT INTO telemetry (
     device_id, site_id, ts, power_kw, energy_kwh_total, voltage_v, status, provenance, quality_flags, rssi,
-    pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+    pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v, load_power_kw, grid_power_kw
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 ON CONFLICT (device_id, ts) DO NOTHING;
 
 -- name: ListTelemetryForSite :many
 -- Keyset pagination on (ts, device_id) DESC. cursor_ts NULL means first page.
 -- from_ts/to_ts NULL means unbounded on that side.
 SELECT ts, power_kw, energy_kwh_total, voltage_v, status, device_id, rssi,
-       pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v
+       pv_power_kw, battery_soc_pct, battery_voltage_v, pv_voltage_v, output_voltage_v, load_power_kw, grid_power_kw
 FROM telemetry
 WHERE site_id = $1
   AND (sqlc.narg('from_ts')::timestamptz IS NULL OR ts >= sqlc.narg('from_ts'))

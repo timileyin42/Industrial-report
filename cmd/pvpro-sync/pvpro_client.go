@@ -76,15 +76,22 @@ type pvproInverter struct {
 }
 
 type pvproFlow struct {
-	PVPower float64 `json:"pvPower"`
-	SOC     float64 `json:"soc"`
-	BattV   float64 `json:"battV"`
+	PVPower   float64 `json:"pvPower"`
+	SOC       float64 `json:"soc"`
+	BattV     float64 `json:"battV"`
+	LoadPower float64 `json:"loadOrEpsPower"`
+	GridPower float64 `json:"gridOrMeterPower"`
 	// ExistsBattery: some inverters (e.g. grid-tie-only models) genuinely
 	// have no battery — PV Pro still returns soc/battV as 0 in that case,
 	// not null, so this flag is the only way to tell "no battery" apart
 	// from "battery reads 0 right now." Must be checked before treating
 	// SOC/BattV as real readings (see buildReading in main.go).
 	ExistsBattery bool `json:"existsBattery"`
+	// ExistsLoad/ExistsGrid: same "genuinely absent, not reading 0"
+	// distinction as ExistsBattery — a site without a grid meter or
+	// separate load-monitoring CT still returns 0 for these fields.
+	ExistsLoad bool `json:"existsLoad"`
+	ExistsGrid bool `json:"existsGrid"`
 	// BatteryFlowDatas: when a site has more than one physical battery
 	// pack (batteryNum > 1), the top-level BattV above is 0 — the real
 	// per-pack voltage only shows up here. A single-pack site has BattV

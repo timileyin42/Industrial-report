@@ -15,6 +15,22 @@ export async function getCurrentGeneration(): Promise<number> {
   return z.object({ current_power_kw: z.number() }).parse(data).current_power_kw;
 }
 
+const CurrentFlowSchema = z.object({
+  solar_kw: z.number(),
+  load_kw: z.number(),
+  grid_kw: z.number(),
+  avg_battery_soc_pct: z.number().nullable(),
+});
+export type CurrentFlow = z.infer<typeof CurrentFlowSchema>;
+
+// Live Energy Flow widget snapshot — solar/load/grid power right now,
+// plus average battery SOC across whatever online devices actually
+// have one. Same liveness as getCurrentGeneration, not a rollup.
+export async function getCurrentFlow(): Promise<CurrentFlow> {
+  const data = await apiRequest<unknown>("/v1/fleet/current-flow");
+  return CurrentFlowSchema.parse(data);
+}
+
 const TopSiteSchema = z.object({
   site_id: z.string(),
   name: z.string().nullable().optional(),
