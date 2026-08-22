@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { HomeIcon, Zap, Leaf, TrendingUp, Activity, Bell, AlertTriangle, PowerOff, ShieldOff, Info, CalendarDays } from "lucide-react";
+import { HomeIcon, Zap, Leaf, TrendingUp, Activity, Bell, AlertTriangle, PowerOff, ShieldOff, Info, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { TopNav } from "../components/layout/TopNav";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { CircularProgress } from "../components/kpi/CircularProgress";
@@ -483,7 +483,32 @@ export function FleetDashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
             <div className="lg:col-span-2 glass-card rounded-xl p-6">
               <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Energy &amp; Emissions Summary</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">Energy &amp; Emissions Summary</span>
+                  {/* Steps the same 7-day window this chart already
+                      shows backward/forward a week at a time — "Forward"
+                      is disabled once the window would reach past today,
+                      since there's no future data to show. */}
+                  <button
+                    type="button"
+                    onClick={() => setReferenceDate(new Date(referenceDate.getTime() - 7 * DAY_MS))}
+                    className="p-1 rounded-full hover:bg-black/5 text-on-surface-variant hover:text-on-surface transition-colors"
+                    aria-label="Previous week"
+                    title="Previous week"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReferenceDate(new Date(referenceDate.getTime() + 7 * DAY_MS))}
+                    disabled={referenceDate.getTime() + 7 * DAY_MS > Date.now()}
+                    className="p-1 rounded-full hover:bg-black/5 text-on-surface-variant hover:text-on-surface transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                    aria-label="Next week"
+                    title="Next week"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
                 <div className="flex gap-1 glass-card rounded-full p-1">
                   <button
                     onClick={() => setSummaryTab("energy")}
