@@ -34,6 +34,14 @@ UPDATE vendor_connections
 SET status = 'active', last_synced_at = $2, last_error = NULL, external_ref = coalesce(sqlc.narg('external_ref'), external_ref)
 WHERE id = $1;
 
+-- name: UpdateVendorConnectionCredential :exec
+-- Provider-agnostic: re-encrypts and overwrites the whole credential
+-- blob, used both by the OAuth callback (storing the very first token)
+-- and by cmd/vendor-sync's refresh-before-poll (storing a rotated
+-- access/refresh token pair) — the column has no idea which shape it
+-- holds, decryption is what interprets it.
+UPDATE vendor_connections SET encrypted_credential = $2 WHERE id = $1;
+
 -- name: MarkVendorConnectionError :exec
 -- A provider-level failure marks only this one connection degraded —
 -- never touches devices.last_contact_at (device-offline) or any other

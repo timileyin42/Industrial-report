@@ -64,10 +64,17 @@ const (
 	AuthTypeOAuth    = "oauth_token"
 )
 
-// Provider is one manufacturer-cloud integration. A single
-// implementation can legitimately back several branded apps at once —
-// ELinterCSP already covers PV Pro, Sunsynk Connect, and Powerview,
-// since all three are white-labeled skins over the same backend.
+// Provider is the metadata every manufacturer-cloud integration
+// exposes regardless of how it authenticates — enough to drive the
+// vendor picker (GET /v1/vendor-providers) and Registry's bookkeeping.
+// The actual sync capability lives on one of the two more specific
+// interfaces below; AuthType() is what a caller switches on to know
+// which one a given Provider also implements.
+//
+// A single implementation can legitimately back several branded apps
+// at once — ELinterCSP already covers PV Pro, Sunsynk Connect, and
+// Powerview, since all three are white-labeled skins over the same
+// backend.
 type Provider interface {
 	// Name is this provider's stable key — stored in
 	// vendor_connections.provider and used to look it up in Registry.
@@ -76,6 +83,14 @@ type Provider interface {
 	AuthType() string
 	Capabilities() Capabilities
 	DefaultPollInterval() time.Duration
+}
+
+// PasswordAuthProvider is a Provider whose AuthType is
+// AuthTypePassword — the customer types the same email/password they
+// already use in the vendor's own app (see ELinterCSP, the one
+// concrete implementation today).
+type PasswordAuthProvider interface {
+	Provider
 
 	// Discover lists every device on the account these credentials
 	// belong to. email/password are the plaintext vendor login,
@@ -86,6 +101,59 @@ type Provider interface {
 	// FetchReading returns one device's current reading. externalRef is
 	// whatever Discover returned for that device.
 	FetchReading(ctx context.Context, email, password, externalRef string) (CloudReading, error)
+}
+
+// OAuthToken is what a vendor's token endpoint returns — stored
+// encrypted in vendor_connections.encrypted_credential exactly like a
+// password-form vendor's email/password is, just token-shaped instead.
+// ExpiresAt drives cmd/vendor-sync's decision to refresh before a poll
+// rather than reactively on a failed call.
+type OAuthToken struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresAt    time.Time
+}
+
+// OAuthProvider is a Provider whose AuthType is AuthTypeOAuth — used
+// by a vendor that has no password-login API at all (SolarEdge,
+// Enphase, ...), so the customer's password never touches this
+// platform. No concrete implementation exists yet (see this package's
+// doc comment on ELinterCSP being the only one so far) — this is the
+// seam a future one plugs into.
+//
+// The redirect crosses out of this app and back, so unlike
+// PasswordAuthProvider's Discover/FetchReading, nothing here is called
+// directly from an HTTP handler's request/response cycle in one shot:
+// AuthorizationURL and ExchangeCode happen a request apart (the
+// vendor's own consent screen sits in between), and RefreshToken is
+// called later still, from cmd/vendor-sync's poll loop.
+type OAuthProvider interface {
+	Provider
+
+	// AuthorizationURL builds the vendor's consent-screen URL. state is
+	// opaque to the Provider — the caller (internal/httpapi) signs and
+	// later verifies it, this just has to echo it back in the URL
+	// exactly as vendors' own OAuth2 flows require. redirectURI must be
+	// byte-for-byte what's registered with the vendor's own OAuth app.
+	AuthorizationURL(state, redirectURI string) string
+
+	// ExchangeCode trades a callback's authorization code for a real
+	// token — called once, immediately after the vendor redirects back
+	// to internal/httpapi's callback handler. redirectURI must match
+	// the one AuthorizationURL was built with (most vendors require the
+	// exact same value on both calls).
+	ExchangeCode(ctx context.Context, code, redirectURI string) (OAuthToken, error)
+
+	// RefreshToken exchanges a still-valid refresh token for a new
+	// access token — called by cmd/vendor-sync before a stored token
+	// expires, never reactively on a 401 (see this package's reliability
+	// requirements).
+	RefreshToken(ctx context.Context, refreshToken string) (OAuthToken, error)
+
+	// Discover/FetchReading mirror PasswordAuthProvider's, just against
+	// a bearer access token instead of a vendor login.
+	Discover(ctx context.Context, accessToken string) ([]DiscoveredDevice, error)
+	FetchReading(ctx context.Context, accessToken, externalRef string) (CloudReading, error)
 }
 
 // Registry is the static, in-process map of every Provider this build

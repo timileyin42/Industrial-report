@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/timileyin42/zgnis-solar/internal/auth"
 	"github.com/timileyin42/zgnis-solar/internal/db"
 	"github.com/timileyin42/zgnis-solar/internal/domain"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // Signup is the public self-service "create my own account" path —

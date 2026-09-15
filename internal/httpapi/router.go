@@ -39,7 +39,16 @@ type Deps struct {
 	Signup            *registry.Signup
 	VendorConnections *registry.VendorConnections
 	ProviderRegistry  *syncengine.Registry
-	Issuer            auth.TokenIssuer
+	// AppBaseURL is the frontend's own origin — reused from what's
+	// already threaded into registry.NewInvites/NewPasswordReset — used
+	// here to redirect the browser back into the SPA once an OAuth
+	// vendor callback finishes (see vendorOAuthCallback).
+	AppBaseURL string
+	// APIPublicBaseURL is this API's own public origin, used to build
+	// the redirect_uri an OAuth vendor calls back to. Must exactly match
+	// what's registered in that vendor's own developer console.
+	APIPublicBaseURL string
+	Issuer           auth.TokenIssuer
 }
 
 func NewRouter(deps Deps) *echo.Echo {
@@ -84,6 +93,15 @@ func NewRouter(deps Deps) *echo.Echo {
 	// Vendor picker — public, lists what's supported, no credentials
 	// exposed.
 	v1.GET("/vendor-providers", h.listVendorProviders)
+
+	// OAuth vendor callback — public because it's the vendor's own
+	// consent screen redirecting the customer's browser here directly,
+	// not a request from this app's SPA (see vendorOAuthCallback's own
+	// doc comment on why the signed state param, not auth middleware,
+	// is what's trusted). No rate limiter: a vendor's own redirect isn't
+	// something an attacker controls the volume of the way a login
+	// attempt is.
+	v1.GET("/vendor-connections/oauth/callback/:provider", h.vendorOAuthCallback)
 
 	// Sandbox — public, no login, deliberately isolated from every real
 	// site/device/telemetry table (migrations/0014_sandbox.sql). A
@@ -156,6 +174,9 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.POST("/sites/:site_id/vendor-connections", h.createVendorConnection, siteAccess)
 	authed.GET("/sites/:site_id/vendor-connections", h.listVendorConnections, siteAccess)
 	authed.DELETE("/sites/:site_id/vendor-connections/:connection_id", h.revokeVendorConnection, siteAccess)
+	// Same site-scoped access as the password path above — starting an
+	// OAuth vendor connection for the customer's own site.
+	authed.POST("/sites/:site_id/vendor-connections/oauth/start", h.startVendorOAuth, siteAccess)
 	authed.GET("/sites/:site_id/export/summary.pdf", h.siteSummaryPDF, siteAccess)
 
 	// Phase 3 — analytics/KPIs (fleet-wide, operator-only: cross-site

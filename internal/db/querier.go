@@ -281,6 +281,12 @@ type Querier interface {
 	// vendor API call than the one used at registration time).
 	UpdateSiteLocation(ctx context.Context, arg UpdateSiteLocationParams) (Site, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
+	// Provider-agnostic: re-encrypts and overwrites the whole credential
+	// blob, used both by the OAuth callback (storing the very first token)
+	// and by cmd/vendor-sync's refresh-before-poll (storing a rotated
+	// access/refresh token pair) — the column has no idea which shape it
+	// holds, decryption is what interprets it.
+	UpdateVendorConnectionCredential(ctx context.Context, arg UpdateVendorConnectionCredentialParams) error
 	// Recomputes each row's expected hash using the exact same expression as
 	// the ingestion_audit_log_chain() trigger (migrations/0013) and compares
 	// against what's actually stored — done entirely in SQL so the digest()

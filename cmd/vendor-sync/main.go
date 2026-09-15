@@ -24,6 +24,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -119,13 +120,75 @@ func runOnce(ctx context.Context, vendorConns *registry.VendorConnections, provi
 	wg.Wait()
 }
 
+// bindProviderCalls returns discover/fetchReading closures already
+// bound to the right credential shape for this connection's provider —
+// email/password for a PasswordAuthProvider, a (possibly just-
+// refreshed) bearer token for an OAuthProvider. Isolating this
+// type-switch here means the rest of syncConnection below doesn't need
+// to know or care which auth flow a given connection uses.
+//
+// An OAuth token is refreshed a couple of minutes before it actually
+// expires, not reactively on a failed call (same "don't wait for
+// something to break" discipline as cmd/pvpro-sync's own JWT refresh),
+// and the refreshed pair is persisted immediately — before it's ever
+// used — since most vendors rotate the refresh token on every use; a
+// crash between refreshing and the next poll must never strand the
+// connection on a refresh token that's already been consumed.
+func bindProviderCalls(ctx context.Context, vendorConns *registry.VendorConnections, provider syncengine.Provider, conn registry.ActiveConnection) (
+	discover func(context.Context) ([]syncengine.DiscoveredDevice, error),
+	fetchReading func(context.Context, string) (syncengine.CloudReading, error),
+	err error,
+) {
+	switch p := provider.(type) {
+	case syncengine.PasswordAuthProvider:
+		return func(ctx context.Context) ([]syncengine.DiscoveredDevice, error) {
+				return p.Discover(ctx, conn.Email, conn.Password)
+			}, func(ctx context.Context, ref string) (syncengine.CloudReading, error) {
+				return p.FetchReading(ctx, conn.Email, conn.Password, ref)
+			}, nil
+
+	case syncengine.OAuthProvider:
+		accessToken := conn.AccessToken
+		if conn.ExpiresAt == nil || time.Now().Add(2*time.Minute).After(*conn.ExpiresAt) {
+			newToken, err := p.RefreshToken(ctx, conn.RefreshToken)
+			if err != nil {
+				return nil, nil, fmt.Errorf("refresh token: %w", err)
+			}
+			if err := vendorConns.UpdateOAuthToken(ctx, conn.ID, newToken); err != nil {
+				log.Printf("vendor-sync: connection %d: persist refreshed token: %v", conn.ID, err)
+			}
+			accessToken = newToken.AccessToken
+		}
+		return func(ctx context.Context) ([]syncengine.DiscoveredDevice, error) {
+				return p.Discover(ctx, accessToken)
+			}, func(ctx context.Context, ref string) (syncengine.CloudReading, error) {
+				return p.FetchReading(ctx, accessToken, ref)
+			}, nil
+
+	default:
+		// Reachable only if a Provider is ever registered whose AuthType
+		// doesn't match either concrete interface it implements — a wiring
+		// bug in cmd/api's/cmd/vendor-sync's own Registry construction,
+		// not a per-customer failure, but still isolated to this one
+		// connection rather than panicking the whole poll cycle.
+		return nil, nil, fmt.Errorf("provider %q implements neither PasswordAuthProvider nor OAuthProvider", provider.Name())
+	}
+}
+
 // syncConnection discovers and syncs one customer's vendor account.
 // Any failure here — bad/expired credentials, the vendor's cloud being
 // unavailable, a single device's reading fetch failing — marks only
 // this one connection as errored and returns; it never touches another
 // connection or another customer's site/device rows.
 func syncConnection(ctx context.Context, vendorConns *registry.VendorConnections, provider syncengine.Provider, ours *ourAPIClient, httpClient *http.Client, conn registry.ActiveConnection) {
-	devices, err := provider.Discover(ctx, conn.Email, conn.Password)
+	discover, fetchReading, err := bindProviderCalls(ctx, vendorConns, provider, conn)
+	if err != nil {
+		log.Printf("vendor-sync: connection %d (%s): %v", conn.ID, conn.Provider, err)
+		_ = vendorConns.MarkError(ctx, conn.ID, err.Error())
+		return
+	}
+
+	devices, err := discover(ctx)
 	if err != nil {
 		log.Printf("vendor-sync: connection %d (%s): discover: %v", conn.ID, conn.Provider, err)
 		_ = vendorConns.MarkError(ctx, conn.ID, "discover: "+err.Error())
@@ -157,7 +220,7 @@ func syncConnection(ctx context.Context, vendorConns *registry.VendorConnections
 			lastErr = err
 			continue
 		}
-		reading, err := provider.FetchReading(ctx, conn.Email, conn.Password, dev.ExternalRef)
+		reading, err := fetchReading(ctx, dev.ExternalRef)
 		if err != nil {
 			log.Printf("vendor-sync: connection %d: fetch reading for %s: %v", conn.ID, dev.ExternalRef, err)
 			lastErr = err

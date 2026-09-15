@@ -67,8 +67,12 @@ func (h *handlers) createVendorConnection(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
-	if _, ok := h.deps.ProviderRegistry.Get(req.Provider); !ok {
+	provider, ok := h.deps.ProviderRegistry.Get(req.Provider)
+	if !ok {
 		return echo.NewHTTPError(http.StatusBadRequest, "unknown provider")
+	}
+	if provider.AuthType() != syncengine.AuthTypePassword {
+		return echo.NewHTTPError(http.StatusBadRequest, "this vendor requires the OAuth connect flow, not a password — see POST .../vendor-connections/oauth/start")
 	}
 
 	conn, err := h.deps.VendorConnections.Create(c.Request().Context(), claims.UserID, registry.CreateConnectionInput{
@@ -90,6 +94,98 @@ func (h *handlers) listVendorConnections(c echo.Context) error {
 		out = append(out, toVendorConnectionResponse(v))
 	}
 	return c.JSON(http.StatusOK, map[string]any{"items": out})
+}
+
+type startOAuthRequest struct {
+	Provider string `json:"provider"`
+}
+type startOAuthResponse struct {
+	AuthorizationURL string `json:"authorization_url"`
+}
+
+// startVendorOAuth begins the OAuth connect flow for a vendor with no
+// password-login API (see syncengine.OAuthProvider's doc comment) —
+// the OAuth counterpart to createVendorConnection. Site-scoped like
+// every other vendor-connections route: the customer is starting a
+// connection for *their own* site.
+func (h *handlers) startVendorOAuth(c echo.Context) error {
+	siteID := c.Param("site_id")
+	var req startOAuthRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	provider, ok := h.deps.ProviderRegistry.Get(req.Provider)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "unknown provider")
+	}
+	oauthProvider, ok := provider.(syncengine.OAuthProvider)
+	if !ok {
+		return echo.NewHTTPError(http.StatusBadRequest, "this vendor doesn't use OAuth — see POST .../vendor-connections")
+	}
+	state, err := h.deps.Issuer.IssueOAuthState(siteID, provider.Name())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "couldn't start the connection, try again")
+	}
+	return c.JSON(http.StatusOK, startOAuthResponse{
+		AuthorizationURL: oauthProvider.AuthorizationURL(state, oauthRedirectURI(h.deps.APIPublicBaseURL, provider.Name())),
+	})
+}
+
+// vendorOAuthCallback is where a vendor's own consent screen redirects
+// the customer's browser back to, after they approve or deny access.
+// Public — this is a plain browser navigation from the vendor's own
+// domain, never called by this app's SPA, so it carries no
+// Authorization header at all. The signed state parameter (see
+// auth.OAuthStateClaims) is the only thing tying this request back to
+// a site — the :provider path segment alone is never trusted for that.
+//
+// Always ends in a redirect back into the SPA (never a JSON error
+// response) — there's no script on this page to read one; the
+// frontend reads the outcome from the query string it lands on
+// instead, same as e.g. AcceptInvitePage reads its token from one.
+func (h *handlers) vendorOAuthCallback(c echo.Context) error {
+	providerName := c.Param("provider")
+	frontendURL := h.deps.AppBaseURL + "/connect-inverter"
+
+	if errParam := c.QueryParam("error"); errParam != "" {
+		// The customer declined consent on the vendor's own screen —
+		// not a bug on either side.
+		return c.Redirect(http.StatusFound, frontendURL+"?oauth_error=denied")
+	}
+
+	claims, err := h.deps.Issuer.ParseOAuthState(c.QueryParam("state"))
+	if err != nil || claims.Provider != providerName {
+		return c.Redirect(http.StatusFound, frontendURL+"?oauth_error=invalid_state")
+	}
+
+	provider, ok := h.deps.ProviderRegistry.Get(providerName)
+	if !ok {
+		return c.Redirect(http.StatusFound, frontendURL+"?oauth_error=unknown_provider")
+	}
+	oauthProvider, ok := provider.(syncengine.OAuthProvider)
+	if !ok {
+		return c.Redirect(http.StatusFound, frontendURL+"?oauth_error=unknown_provider")
+	}
+
+	ctx := c.Request().Context()
+	token, err := oauthProvider.ExchangeCode(ctx, c.QueryParam("code"), oauthRedirectURI(h.deps.APIPublicBaseURL, providerName))
+	if err != nil {
+		return c.Redirect(http.StatusFound, frontendURL+"?oauth_error=exchange_failed")
+	}
+	if _, err := h.deps.VendorConnections.CreateFromOAuth(ctx, claims.SiteID, providerName, token); err != nil {
+		return c.Redirect(http.StatusFound, frontendURL+"?oauth_error=store_failed")
+	}
+	return c.Redirect(http.StatusFound, frontendURL+"?connected=1")
+}
+
+// oauthRedirectURI must be byte-for-byte identical between the start
+// call (AuthorizationURL) and the exchange call (ExchangeCode) — most
+// vendors' OAuth2 implementations require that — and must also be
+// byte-for-byte what's registered in that vendor's own developer
+// console, which is only possible to get exactly right once a real
+// vendor app exists to register it with.
+func oauthRedirectURI(apiPublicBaseURL, providerName string) string {
+	return apiPublicBaseURL + "/v1/vendor-connections/oauth/callback/" + providerName
 }
 
 func (h *handlers) revokeVendorConnection(c echo.Context) error {

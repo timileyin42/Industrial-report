@@ -71,6 +71,12 @@ func main() {
 	// setting it. RESEND_API_KEY/EMAIL_FROM_ADDRESS are optional: unset
 	// falls back to a logging no-op sender (see internal/email).
 	appBaseURL := envOr("APP_BASE_URL", "http://localhost:5173")
+	// This API's own public origin — must exactly match the redirect_uri
+	// registered with any OAuth vendor's developer console (see
+	// httpapi.Deps.APIPublicBaseURL's own doc comment). Defaults to the
+	// local dev API port so the OAuth start/callback routes at least
+	// build a coherent URL before that's ever configured for real.
+	apiPublicBaseURL := envOr("API_PUBLIC_BASE_URL", "http://localhost:8080")
 	sender := email.NewSenderFromEnv()
 	invites := registry.NewInvites(queries, sender, appBaseURL)
 	passwordReset := registry.NewPasswordReset(queries, sender, appBaseURL)
@@ -125,6 +131,8 @@ func main() {
 		Signup:            signup,
 		VendorConnections: vendorConnections,
 		ProviderRegistry:  providerRegistry,
+		AppBaseURL:        appBaseURL,
+		APIPublicBaseURL:  apiPublicBaseURL,
 		Issuer:            auth.NewTokenIssuer(jwtSecret),
 	})
 

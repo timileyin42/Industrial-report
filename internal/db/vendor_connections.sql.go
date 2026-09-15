@@ -216,3 +216,22 @@ func (q *Queries) RevokeVendorConnection(ctx context.Context, arg RevokeVendorCo
 	_, err := q.db.Exec(ctx, revokeVendorConnection, arg.ID, arg.SiteID)
 	return err
 }
+
+const updateVendorConnectionCredential = `-- name: UpdateVendorConnectionCredential :exec
+UPDATE vendor_connections SET encrypted_credential = $2 WHERE id = $1
+`
+
+type UpdateVendorConnectionCredentialParams struct {
+	ID                  int64
+	EncryptedCredential []byte
+}
+
+// Provider-agnostic: re-encrypts and overwrites the whole credential
+// blob, used both by the OAuth callback (storing the very first token)
+// and by cmd/vendor-sync's refresh-before-poll (storing a rotated
+// access/refresh token pair) — the column has no idea which shape it
+// holds, decryption is what interprets it.
+func (q *Queries) UpdateVendorConnectionCredential(ctx context.Context, arg UpdateVendorConnectionCredentialParams) error {
+	_, err := q.db.Exec(ctx, updateVendorConnectionCredential, arg.ID, arg.EncryptedCredential)
+	return err
+}

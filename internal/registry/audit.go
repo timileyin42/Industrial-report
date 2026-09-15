@@ -38,6 +38,36 @@ func recordAction(ctx context.Context, q *db.Queries, actorUserID int64, action,
 	}
 }
 
+// recordSystemAction is recordAction with no actor — legal at the
+// schema level (user_action_audit_log.actor_user_id has no NOT NULL,
+// see migrations/0002) but only used where there genuinely is no
+// authenticated caller to attribute to, unlike self-signup's bootstrap
+// (see signup.go's own doc comment, which deliberately avoids this by
+// reordering instead). The one real case today: the vendor OAuth
+// callback is a plain browser redirect from the vendor's own site, not
+// a request from this app's SPA — there is no bearer token, hence no
+// claims.UserID, to attribute the resulting connection to.
+func recordSystemAction(ctx context.Context, q *db.Queries, action, targetType, targetID string, metadata map[string]any) {
+	var metaJSON []byte
+	if metadata != nil {
+		var err error
+		metaJSON, err = json.Marshal(metadata)
+		if err != nil {
+			log.Printf("audit: marshal metadata for action %s: %v", action, err)
+		}
+	}
+	err := q.CreateUserActionAuditLog(ctx, db.CreateUserActionAuditLogParams{
+		ActorUserID: pgtype.Int8{Valid: false},
+		Action:      action,
+		TargetType:  pgtype.Text{String: targetType, Valid: targetType != ""},
+		TargetID:    pgtype.Text{String: targetID, Valid: targetID != ""},
+		Metadata:    metaJSON,
+	})
+	if err != nil {
+		log.Printf("audit: failed to record action %s on %s/%s: %v", action, targetType, targetID, err)
+	}
+}
+
 // AuditLog is the read side of user_action_audit_log — the Phase 3
 // catch-up on migration 0002's own deferred TODO ("a browsing/reporting
 // UI on this table is Phase 3").
