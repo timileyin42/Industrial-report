@@ -10,6 +10,8 @@ import { TermsOfServicePage } from "./pages/landing/TermsOfServicePage";
 import { PrivacyPolicyPage } from "./pages/landing/PrivacyPolicyPage";
 import { SecurityPage } from "./pages/landing/SecurityPage";
 import { LoginPage } from "./pages/LoginPage";
+import { SignupPage } from "./pages/SignupPage";
+import { ConnectInverterPage } from "./pages/ConnectInverterPage";
 import { FleetDashboardPage } from "./pages/FleetDashboardPage";
 import { SitesListPage } from "./pages/SitesListPage";
 import { AddSitePage } from "./pages/AddSitePage";
@@ -48,11 +50,20 @@ export const router = createBrowserRouter([
   { path: "/privacy", element: <PrivacyPolicyPage /> },
   { path: "/security", element: <SecurityPage /> },
   { path: "/login", element: <LoginPage /> },
+  { path: "/signup", element: <SignupPage /> },
   { path: "/accept-invite", element: <AcceptInvitePage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/sandbox", element: <SandboxUploadPage /> },
   { path: "/sandbox/:runId", element: <SandboxResultsPage /> },
+
+  // Right after self-signup — needs a session (RequireAuth) but not the
+  // dashboard chrome (AppLayout), same as every other standalone
+  // auth-family page in this router.
+  {
+    element: <RequireAuth />,
+    children: [{ path: "/connect-inverter", element: <ConnectInverterPage /> }],
+  },
 
   // Authenticated dashboard app, under /app
   {

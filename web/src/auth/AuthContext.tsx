@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { configureApiClient } from "../api/client";
 import { login as loginRequest } from "../api/auth";
+import { signup as signupRequest } from "../api/signup";
 import type { Role } from "../api/types";
 
 interface Session {
@@ -19,6 +20,7 @@ interface AuthState {
   session: Session | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<Session>;
+  signup: (email: string, password: string) => Promise<Session>;
   logout: () => void;
 }
 
@@ -70,23 +72,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // login and signup return the identical response shape (see
+  // SignupResponseSchema) and are stored the same way — a brand-new
+  // self-service account is signed straight in, same as accepting an
+  // invite already does.
+  function persistSession(res: { token: string; expires_at: string; role: Role; site_id?: string | null }, email: string): Session {
+    const next: Session = {
+      token: res.token,
+      expiresAt: res.expires_at,
+      role: res.role,
+      siteId: res.site_id ?? null,
+      email,
+    };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    setSession(next);
+    return next;
+  }
+
   const value = useMemo<AuthState>(
     () => ({
       session,
       isLoading: false,
-      login: async (email, password) => {
-        const res = await loginRequest(email, password);
-        const next: Session = {
-          token: res.token,
-          expiresAt: res.expires_at,
-          role: res.role,
-          siteId: res.site_id ?? null,
-          email,
-        };
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        setSession(next);
-        return next;
-      },
+      login: async (email, password) => persistSession(await loginRequest(email, password), email),
+      signup: async (email, password) => persistSession(await signupRequest(email, password), email),
       logout: () => {
         sessionStorage.removeItem(STORAGE_KEY);
         setSession(null);
