@@ -113,6 +113,26 @@ services:
       api:
         condition: service_started
 
+  # Not in docker compose up's default set (no depends_on targets it, and
+  # it's gated behind the "solarman" profile) — SOLARMAN_APP_ID/SECRET
+  # don't exist yet pending Solarman's manual API-access approval (see
+  # docs/solarman-integration.md), and mustEnv() would crash-loop on
+  # startup without them. Activate once credentials exist:
+  #   docker compose --profile solarman up -d solarman-sync
+  solarman-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.solarman-sync
+    container_name: zgnis-solarman-sync
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_BASE_URL: http://api:8080
+    depends_on:
+      api:
+        condition: service_started
+    profiles: ["solarman"]
+
   # Not started by `docker compose up` (no `depends_on` targets it) —
   # run once per environment via:
   #   docker compose run --rm seed-operator -email you@example.com -password 'change-me-now'
