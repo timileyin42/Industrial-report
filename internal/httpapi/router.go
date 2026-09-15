@@ -14,28 +14,32 @@ import (
 	"github.com/timileyin42/zgnis-solar/internal/auth"
 	"github.com/timileyin42/zgnis-solar/internal/domain"
 	"github.com/timileyin42/zgnis-solar/internal/registry"
+	"github.com/timileyin42/zgnis-solar/internal/syncengine"
 )
 
 type Deps struct {
-	Sites          *registry.Sites
-	Devices        *registry.Devices
-	Users          *registry.Users
-	Fleet          *registry.Fleet
-	Telemetry      *registry.Telemetry
-	Analytics      *registry.Analytics
-	Emissions      *registry.Emissions
-	Benchmark      *registry.Benchmark
-	Anomaly        *registry.Anomaly
-	AuditLog       *registry.AuditLog
-	IngestionAudit *registry.IngestionAudit
-	Invites        *registry.Invites
-	PasswordReset  *registry.PasswordReset
-	Exports        *registry.Exports
-	Alerts         *registry.Alerts
-	Sandbox        *registry.Sandbox
-	DemoRequests   *registry.DemoRequests
-	CloudImport    *registry.CloudImport
-	Issuer         auth.TokenIssuer
+	Sites             *registry.Sites
+	Devices           *registry.Devices
+	Users             *registry.Users
+	Fleet             *registry.Fleet
+	Telemetry         *registry.Telemetry
+	Analytics         *registry.Analytics
+	Emissions         *registry.Emissions
+	Benchmark         *registry.Benchmark
+	Anomaly           *registry.Anomaly
+	AuditLog          *registry.AuditLog
+	IngestionAudit    *registry.IngestionAudit
+	Invites           *registry.Invites
+	PasswordReset     *registry.PasswordReset
+	Exports           *registry.Exports
+	Alerts            *registry.Alerts
+	Sandbox           *registry.Sandbox
+	DemoRequests      *registry.DemoRequests
+	CloudImport       *registry.CloudImport
+	Signup            *registry.Signup
+	VendorConnections *registry.VendorConnections
+	ProviderRegistry  *syncengine.Registry
+	Issuer            auth.TokenIssuer
 }
 
 func NewRouter(deps Deps) *echo.Echo {
@@ -72,6 +76,14 @@ func NewRouter(deps Deps) *echo.Echo {
 	v1.POST("/invites/accept", h.acceptInvite, authLimiter)
 	v1.POST("/auth/password-reset/request", h.requestPasswordReset, authLimiter)
 	v1.POST("/auth/password-reset/confirm", h.confirmPasswordReset, authLimiter)
+
+	// Public self-service signup — distinct from the existing
+	// operator-only POST /v1/users. Same rate class as login/password
+	// reset, since it's another public, credential-adjacent endpoint.
+	v1.POST("/signup", h.signup, registerLimiter)
+	// Vendor picker — public, lists what's supported, no credentials
+	// exposed.
+	v1.GET("/vendor-providers", h.listVendorProviders)
 
 	// Sandbox — public, no login, deliberately isolated from every real
 	// site/device/telemetry table (migrations/0014_sandbox.sql). A
@@ -137,6 +149,13 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/sites/:site_id/analytics/anomalies", h.siteAnomalies, siteAccess)
 	authed.GET("/sites/:site_id/export/telemetry.csv", h.siteTelemetryCSV, siteAccess)
 	authed.GET("/sites/:site_id/export/summary.csv", h.siteSummaryCSV, siteAccess)
+
+	// Connect Your Inverter — site-scoped like every other site route
+	// above, not operator-only: a customer connects *their own* newly
+	// signed-up site's vendor account directly.
+	authed.POST("/sites/:site_id/vendor-connections", h.createVendorConnection, siteAccess)
+	authed.GET("/sites/:site_id/vendor-connections", h.listVendorConnections, siteAccess)
+	authed.DELETE("/sites/:site_id/vendor-connections/:connection_id", h.revokeVendorConnection, siteAccess)
 	authed.GET("/sites/:site_id/export/summary.pdf", h.siteSummaryPDF, siteAccess)
 
 	// Phase 3 — analytics/KPIs (fleet-wide, operator-only: cross-site

@@ -199,3 +199,16 @@ CREATE TABLE sandbox_readings (
     is_reset         boolean NOT NULL DEFAULT false,
     rssi             integer
 );
+
+CREATE TABLE vendor_connections (
+    id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id              text NOT NULL REFERENCES sites(site_id),
+    provider             text NOT NULL,
+    external_ref         text,
+    encrypted_credential bytea NOT NULL,
+    status               text NOT NULL DEFAULT 'pending',
+    last_synced_at       timestamptz,
+    last_error           text,
+    created_by_user_id   bigint REFERENCES users(id),
+    created_at           timestamptz NOT NULL DEFAULT now()
+);

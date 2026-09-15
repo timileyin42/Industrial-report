@@ -23,6 +23,7 @@ import (
 	"github.com/timileyin42/zgnis-solar/internal/mqttadmin"
 	"github.com/timileyin42/zgnis-solar/internal/registry"
 	"github.com/timileyin42/zgnis-solar/internal/storage"
+	"github.com/timileyin42/zgnis-solar/internal/syncengine"
 )
 
 func main() {
@@ -91,27 +92,40 @@ func main() {
 	// pattern as RESEND_API_KEY.
 	demoRequests := registry.NewDemoRequests(queries, sender, os.Getenv("COMPANY_CONTACT_EMAIL"))
 	cloudImport := registry.NewCloudImport(queries)
+	signup := registry.NewSignup(queries)
+	vendorConnections, err := registry.NewVendorConnections(queries)
+	if err != nil {
+		log.Fatalf("vendor connections: %v", err)
+	}
+	// ELinterCSP (PV Pro/Sunsynk/Powerview) is the reference provider —
+	// see docs and the plan file for why it was chosen over an
+	// OAuth-only or approval-gated vendor. Registering the next vendor
+	// here is the only wiring change needed once its Provider is built.
+	providerRegistry := syncengine.NewRegistry(syncengine.NewELinterCSP())
 
 	e := httpapi.NewRouter(httpapi.Deps{
-		Sites:          sites,
-		Devices:        devices,
-		Users:          users,
-		Fleet:          fleet,
-		Telemetry:      telemetry,
-		Analytics:      analytics,
-		Emissions:      emissions,
-		Benchmark:      benchmark,
-		Anomaly:        anomaly,
-		AuditLog:       auditLog,
-		IngestionAudit: ingestionAudit,
-		Invites:        invites,
-		PasswordReset:  passwordReset,
-		Exports:        exports,
-		Alerts:         alerts,
-		Sandbox:        sandbox,
-		DemoRequests:   demoRequests,
-		CloudImport:    cloudImport,
-		Issuer:         auth.NewTokenIssuer(jwtSecret),
+		Sites:             sites,
+		Devices:           devices,
+		Users:             users,
+		Fleet:             fleet,
+		Telemetry:         telemetry,
+		Analytics:         analytics,
+		Emissions:         emissions,
+		Benchmark:         benchmark,
+		Anomaly:           anomaly,
+		AuditLog:          auditLog,
+		IngestionAudit:    ingestionAudit,
+		Invites:           invites,
+		PasswordReset:     passwordReset,
+		Exports:           exports,
+		Alerts:            alerts,
+		Sandbox:           sandbox,
+		DemoRequests:      demoRequests,
+		CloudImport:       cloudImport,
+		Signup:            signup,
+		VendorConnections: vendorConnections,
+		ProviderRegistry:  providerRegistry,
+		Issuer:            auth.NewTokenIssuer(jwtSecret),
 	})
 
 	// Phase 4: optional TLS listener. Only takes effect when both
