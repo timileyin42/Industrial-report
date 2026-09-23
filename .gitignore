@@ -29,6 +29,7 @@ design/
 AGENTS.md
 CLAUDE.md
 SKILL.md
+.claude/
 
 # Phase 4 — local backups and dev-only TLS certs/keys, never committed
 backups/

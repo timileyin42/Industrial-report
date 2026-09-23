@@ -23,6 +23,7 @@ import (
 	"github.com/timileyin42/zgnis-solar/internal/mqttadmin"
 	"github.com/timileyin42/zgnis-solar/internal/registry"
 	"github.com/timileyin42/zgnis-solar/internal/storage"
+	"github.com/timileyin42/zgnis-solar/internal/syncengine"
 )
 
 func main() {
@@ -70,6 +71,12 @@ func main() {
 	// setting it. RESEND_API_KEY/EMAIL_FROM_ADDRESS are optional: unset
 	// falls back to a logging no-op sender (see internal/email).
 	appBaseURL := envOr("APP_BASE_URL", "http://localhost:5173")
+	// This API's own public origin — must exactly match the redirect_uri
+	// registered with any OAuth vendor's developer console (see
+	// httpapi.Deps.APIPublicBaseURL's own doc comment). Defaults to the
+	// local dev API port so the OAuth start/callback routes at least
+	// build a coherent URL before that's ever configured for real.
+	apiPublicBaseURL := envOr("API_PUBLIC_BASE_URL", "http://localhost:8080")
 	sender := email.NewSenderFromEnv()
 	invites := registry.NewInvites(queries, sender, appBaseURL)
 	passwordReset := registry.NewPasswordReset(queries, sender, appBaseURL)
@@ -91,27 +98,51 @@ func main() {
 	// pattern as RESEND_API_KEY.
 	demoRequests := registry.NewDemoRequests(queries, sender, os.Getenv("COMPANY_CONTACT_EMAIL"))
 	cloudImport := registry.NewCloudImport(queries)
+	signup := registry.NewSignup(queries)
+	vendorConnections, err := registry.NewVendorConnections(queries)
+	if err != nil {
+		log.Fatalf("vendor connections: %v", err)
+	}
+	// ELinterCSP (PV Pro/Sunsynk/Powerview) is the reference provider —
+	// see docs and the plan file for why it was chosen over an
+	// OAuth-only or approval-gated vendor. FelicitySolar needs no
+	// platform-level credential, so it's always registered. DeyeCloud
+	// does (DEYE_APP_ID/DEYE_APP_SECRET, from developer.deyecloud.com/
+	// app) — only registered once both are set, same "unset just skips
+	// this part" pattern as RESEND_API_KEY/mqttAdmin elsewhere in this
+	// file, so a deployment without Deye credentials yet doesn't show a
+	// vendor tile that can only ever fail to connect.
+	providers := []syncengine.Provider{syncengine.NewELinterCSP(), syncengine.NewFelicitySolar()}
+	if id, secret := os.Getenv("DEYE_APP_ID"), os.Getenv("DEYE_APP_SECRET"); id != "" && secret != "" {
+		providers = append(providers, syncengine.NewDeyeCloud(id, secret))
+	}
+	providerRegistry := syncengine.NewRegistry(providers...)
 
 	e := httpapi.NewRouter(httpapi.Deps{
-		Sites:          sites,
-		Devices:        devices,
-		Users:          users,
-		Fleet:          fleet,
-		Telemetry:      telemetry,
-		Analytics:      analytics,
-		Emissions:      emissions,
-		Benchmark:      benchmark,
-		Anomaly:        anomaly,
-		AuditLog:       auditLog,
-		IngestionAudit: ingestionAudit,
-		Invites:        invites,
-		PasswordReset:  passwordReset,
-		Exports:        exports,
-		Alerts:         alerts,
-		Sandbox:        sandbox,
-		DemoRequests:   demoRequests,
-		CloudImport:    cloudImport,
-		Issuer:         auth.NewTokenIssuer(jwtSecret),
+		Sites:             sites,
+		Devices:           devices,
+		Users:             users,
+		Fleet:             fleet,
+		Telemetry:         telemetry,
+		Analytics:         analytics,
+		Emissions:         emissions,
+		Benchmark:         benchmark,
+		Anomaly:           anomaly,
+		AuditLog:          auditLog,
+		IngestionAudit:    ingestionAudit,
+		Invites:           invites,
+		PasswordReset:     passwordReset,
+		Exports:           exports,
+		Alerts:            alerts,
+		Sandbox:           sandbox,
+		DemoRequests:      demoRequests,
+		CloudImport:       cloudImport,
+		Signup:            signup,
+		VendorConnections: vendorConnections,
+		ProviderRegistry:  providerRegistry,
+		AppBaseURL:        appBaseURL,
+		APIPublicBaseURL:  apiPublicBaseURL,
+		Issuer:            auth.NewTokenIssuer(jwtSecret),
 	})
 
 	// Phase 4: optional TLS listener. Only takes effect when both

@@ -14,28 +14,41 @@ import (
 	"github.com/timileyin42/zgnis-solar/internal/auth"
 	"github.com/timileyin42/zgnis-solar/internal/domain"
 	"github.com/timileyin42/zgnis-solar/internal/registry"
+	"github.com/timileyin42/zgnis-solar/internal/syncengine"
 )
 
 type Deps struct {
-	Sites          *registry.Sites
-	Devices        *registry.Devices
-	Users          *registry.Users
-	Fleet          *registry.Fleet
-	Telemetry      *registry.Telemetry
-	Analytics      *registry.Analytics
-	Emissions      *registry.Emissions
-	Benchmark      *registry.Benchmark
-	Anomaly        *registry.Anomaly
-	AuditLog       *registry.AuditLog
-	IngestionAudit *registry.IngestionAudit
-	Invites        *registry.Invites
-	PasswordReset  *registry.PasswordReset
-	Exports        *registry.Exports
-	Alerts         *registry.Alerts
-	Sandbox        *registry.Sandbox
-	DemoRequests   *registry.DemoRequests
-	CloudImport    *registry.CloudImport
-	Issuer         auth.TokenIssuer
+	Sites             *registry.Sites
+	Devices           *registry.Devices
+	Users             *registry.Users
+	Fleet             *registry.Fleet
+	Telemetry         *registry.Telemetry
+	Analytics         *registry.Analytics
+	Emissions         *registry.Emissions
+	Benchmark         *registry.Benchmark
+	Anomaly           *registry.Anomaly
+	AuditLog          *registry.AuditLog
+	IngestionAudit    *registry.IngestionAudit
+	Invites           *registry.Invites
+	PasswordReset     *registry.PasswordReset
+	Exports           *registry.Exports
+	Alerts            *registry.Alerts
+	Sandbox           *registry.Sandbox
+	DemoRequests      *registry.DemoRequests
+	CloudImport       *registry.CloudImport
+	Signup            *registry.Signup
+	VendorConnections *registry.VendorConnections
+	ProviderRegistry  *syncengine.Registry
+	// AppBaseURL is the frontend's own origin — reused from what's
+	// already threaded into registry.NewInvites/NewPasswordReset — used
+	// here to redirect the browser back into the SPA once an OAuth
+	// vendor callback finishes (see vendorOAuthCallback).
+	AppBaseURL string
+	// APIPublicBaseURL is this API's own public origin, used to build
+	// the redirect_uri an OAuth vendor calls back to. Must exactly match
+	// what's registered in that vendor's own developer console.
+	APIPublicBaseURL string
+	Issuer           auth.TokenIssuer
 }
 
 func NewRouter(deps Deps) *echo.Echo {
@@ -72,6 +85,23 @@ func NewRouter(deps Deps) *echo.Echo {
 	v1.POST("/invites/accept", h.acceptInvite, authLimiter)
 	v1.POST("/auth/password-reset/request", h.requestPasswordReset, authLimiter)
 	v1.POST("/auth/password-reset/confirm", h.confirmPasswordReset, authLimiter)
+
+	// Public self-service signup — distinct from the existing
+	// operator-only POST /v1/users. Same rate class as login/password
+	// reset, since it's another public, credential-adjacent endpoint.
+	v1.POST("/signup", h.signup, registerLimiter)
+	// Vendor picker — public, lists what's supported, no credentials
+	// exposed.
+	v1.GET("/vendor-providers", h.listVendorProviders)
+
+	// OAuth vendor callback — public because it's the vendor's own
+	// consent screen redirecting the customer's browser here directly,
+	// not a request from this app's SPA (see vendorOAuthCallback's own
+	// doc comment on why the signed state param, not auth middleware,
+	// is what's trusted). No rate limiter: a vendor's own redirect isn't
+	// something an attacker controls the volume of the way a login
+	// attempt is.
+	v1.GET("/vendor-connections/oauth/callback/:provider", h.vendorOAuthCallback)
 
 	// Sandbox — public, no login, deliberately isolated from every real
 	// site/device/telemetry table (migrations/0014_sandbox.sql). A
@@ -137,6 +167,16 @@ func NewRouter(deps Deps) *echo.Echo {
 	authed.GET("/sites/:site_id/analytics/anomalies", h.siteAnomalies, siteAccess)
 	authed.GET("/sites/:site_id/export/telemetry.csv", h.siteTelemetryCSV, siteAccess)
 	authed.GET("/sites/:site_id/export/summary.csv", h.siteSummaryCSV, siteAccess)
+
+	// Connect Your Inverter — site-scoped like every other site route
+	// above, not operator-only: a customer connects *their own* newly
+	// signed-up site's vendor account directly.
+	authed.POST("/sites/:site_id/vendor-connections", h.createVendorConnection, siteAccess)
+	authed.GET("/sites/:site_id/vendor-connections", h.listVendorConnections, siteAccess)
+	authed.DELETE("/sites/:site_id/vendor-connections/:connection_id", h.revokeVendorConnection, siteAccess)
+	// Same site-scoped access as the password path above — starting an
+	// OAuth vendor connection for the customer's own site.
+	authed.POST("/sites/:site_id/vendor-connections/oauth/start", h.startVendorOAuth, siteAccess)
 	authed.GET("/sites/:site_id/export/summary.pdf", h.siteSummaryPDF, siteAccess)
 
 	// Phase 3 — analytics/KPIs (fleet-wide, operator-only: cross-site

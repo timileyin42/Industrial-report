@@ -39,6 +39,7 @@ type Querier interface {
 	CreateSite(ctx context.Context, arg CreateSiteParams) (Site, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserActionAuditLog(ctx context.Context, arg CreateUserActionAuditLogParams) error
+	CreateVendorConnection(ctx context.Context, arg CreateVendorConnectionParams) (CreateVendorConnectionRow, error)
 	// Same live "most recent reading per online device" shape as
 	// CurrentFleetGeneration, extended to the rest of the Energy Flow
 	// widget: solar (PV-side, distinct from AC power above), load
@@ -115,6 +116,9 @@ type Querier interface {
 	GetSite(ctx context.Context, siteID string) (Site, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	// Decryption happens in Go (internal/registry/vendor_connections.go) —
+	// this just returns the ciphertext, never anything already decrypted.
+	GetVendorConnectionCredential(ctx context.Context, id int64) ([]byte, error)
 	InsertTelemetryReading(ctx context.Context, arg InsertTelemetryReadingParams) (int64, error)
 	// Most recent message the ingestor has seen, fleet-wide, regardless of
 	// whether it passed validation — the Dashboard's ingestion-pipeline
@@ -132,6 +136,20 @@ type Querier interface {
 	// Same small, TTL-bounded scan-and-bcrypt-compare pattern as
 	// ListActiveInvites — see migrations/0007's comment.
 	ListActivePasswordResetTokens(ctx context.Context) ([]PasswordResetToken, error)
+	// Feeds cmd/vendor-sync's poll loop — every connection the sync binary
+	// should still be trying, across every customer: 'pending' (never
+	// synced yet — MarkVendorConnectionSynced is what promotes a row to
+	// 'active', so pending has to be included here or a brand-new
+	// connection could never reach 'active' in the first place), 'active',
+	// and 'error' (a transient/unconfirmed failure — vendor outage, network
+	// blip — retried every cycle rather than given up on). Both 'revoked'
+	// (the customer's own explicit stop) and 'invalid_credentials' (the
+	// vendor's own response confirmed the password is actually wrong — see
+	// MarkVendorConnectionInvalidCredentials) are excluded: retrying a
+	// confirmed-wrong password forever isn't just wasteful, it risks
+	// locking the customer out of their own vendor account (observed live
+	// against Deye's login endpoint). A customer reconnects to retry it.
+	ListActiveVendorConnections(ctx context.Context) ([]ListActiveVendorConnectionsRow, error)
 	// Unbounded on purpose, unlike ListEmissionFactorHistory above — this
 	// feeds per-period historical lookup (Emissions.factorAsOf), which needs
 	// every revision ever set for the country, not a capped "recent N" list.
@@ -215,6 +233,7 @@ type Querier interface {
 	ListUserActionAuditLog(ctx context.Context, arg ListUserActionAuditLogParams) ([]ListUserActionAuditLogRow, error)
 	// Keyset pagination, same convention as ListSites/ListDevices.
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	ListVendorConnectionsForSite(ctx context.Context, siteID string) ([]ListVendorConnectionsForSiteRow, error)
 	MarkCloudImportTokenUsed(ctx context.Context, id int64) error
 	MarkExportJobCompleted(ctx context.Context, arg MarkExportJobCompletedParams) error
 	MarkExportJobFailed(ctx context.Context, arg MarkExportJobFailedParams) error
@@ -223,6 +242,19 @@ type Querier interface {
 	MarkIngestionAuditProcessed(ctx context.Context, id int64) error
 	MarkInviteAccepted(ctx context.Context, id int64) error
 	MarkPasswordResetTokenUsed(ctx context.Context, id int64) error
+	// A provider-level failure marks only this one connection degraded —
+	// never touches devices.last_contact_at (device-offline) or any other
+	// customer's own connection row. See internal/syncengine's isolation
+	// requirement.
+	MarkVendorConnectionError(ctx context.Context, arg MarkVendorConnectionErrorParams) error
+	// Distinct from MarkVendorConnectionError: this is only ever called
+	// when the vendor's own response confirmed the account/password itself
+	// is wrong (see syncengine.ErrInvalidCredentials), never for a
+	// transient failure. 'invalid_credentials' rows are excluded from
+	// ListActiveVendorConnections — the poll loop stops retrying this
+	// connection until the customer reconnects with corrected credentials.
+	MarkVendorConnectionInvalidCredentials(ctx context.Context, arg MarkVendorConnectionInvalidCredentialsParams) error
+	MarkVendorConnectionSynced(ctx context.Context, arg MarkVendorConnectionSyncedParams) error
 	// Mirrors cmd/ingestor/main.go's previousEnergyByTS — chronological
 	// lookup by ts, never by insertion order, so reset detection stays
 	// correct under out-of-order/backfilled arrival (see domain.
@@ -232,6 +264,7 @@ type Querier interface {
 	// active credential at a time, same model as device secret rotation.
 	RevokeCloudImportTokensForDevice(ctx context.Context, deviceID string) error
 	RevokeDevice(ctx context.Context, deviceID string) (Device, error)
+	RevokeVendorConnection(ctx context.Context, arg RevokeVendorConnectionParams) error
 	RotateDeviceSecret(ctx context.Context, arg RotateDeviceSecretParams) (Device, error)
 	SetSitePrimary(ctx context.Context, siteID string) (Site, error)
 	// disabled_at itself, not a boolean flag — NULL means active, a real
@@ -259,6 +292,12 @@ type Querier interface {
 	// vendor API call than the one used at registration time).
 	UpdateSiteLocation(ctx context.Context, arg UpdateSiteLocationParams) (Site, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
+	// Provider-agnostic: re-encrypts and overwrites the whole credential
+	// blob, used both by the OAuth callback (storing the very first token)
+	// and by cmd/vendor-sync's refresh-before-poll (storing a rotated
+	// access/refresh token pair) — the column has no idea which shape it
+	// holds, decryption is what interprets it.
+	UpdateVendorConnectionCredential(ctx context.Context, arg UpdateVendorConnectionCredentialParams) error
 	// Recomputes each row's expected hash using the exact same expression as
 	// the ingestion_audit_log_chain() trigger (migrations/0013) and compares
 	// against what's actually stored — done entirely in SQL so the digest()

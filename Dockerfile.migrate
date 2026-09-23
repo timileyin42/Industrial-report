@@ -2,12 +2,13 @@
 # compose service, not a long-running container. Continuous aggregates
 # still need the manual refresh step documented in README §3 after this
 # runs for the first time against a database with existing data.
-# goose@latest requires a newer Go toolchain than our module's own `go
-# 1.24` directive — that's fine, this image only installs the goose CLI
-# tool, it never builds our module, so bumping this base image doesn't
-# touch the project's Go version requirement.
+# Pinned to a goose release that still builds under Go 1.25 — `@latest`
+# (v3.28.0) bumped its own go.mod to require go >= 1.26, which this base
+# image doesn't have. This image only installs the goose CLI tool, it
+# never builds our module, so the pin here is independent of the
+# project's own `go 1.24` directive.
 FROM golang:1.25-alpine
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.24.1
 WORKDIR /migrations
 COPY migrations/ .
 ENTRYPOINT ["sh", "-c", "goose -dir . postgres \"$DATABASE_URL\" up"]

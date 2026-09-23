@@ -398,3 +398,16 @@ type UserActionAuditLog struct {
 	PrevHash    pgtype.Text
 	EntryHash   pgtype.Text
 }
+
+type VendorConnection struct {
+	ID                  int64
+	SiteID              string
+	Provider            string
+	ExternalRef         pgtype.Text
+	EncryptedCredential []byte
+	Status              string
+	LastSyncedAt        pgtype.Timestamptz
+	LastError           pgtype.Text
+	CreatedByUserID     pgtype.Int8
+	CreatedAt           pgtype.Timestamptz
+}

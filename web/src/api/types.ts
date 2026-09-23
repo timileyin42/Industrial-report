@@ -13,6 +13,49 @@ export const LoginResponseSchema = z.object({
 });
 export type LoginResponse = z.infer<typeof LoginResponseSchema>;
 
+// POST /v1/signup returns the exact same shape as login (see
+// internal/httpapi/signup_handlers.go) — a brand-new self-service
+// account is signed straight in, same as accepting an invite is.
+export const SignupResponseSchema = LoginResponseSchema;
+export type SignupResponse = LoginResponse;
+
+// Mirrors internal/syncengine.Capabilities — lets the Connect screen
+// only claim what a picked vendor actually reports (e.g. don't show a
+// battery % placeholder for a connection whose vendor never sends one).
+export const ProviderCapabilitiesSchema = z.object({
+  RealtimeData: z.boolean(),
+  HistoricalData: z.boolean(),
+  BatteryData: z.boolean(),
+  GridData: z.boolean(),
+  LoadData: z.boolean(),
+});
+export type ProviderCapabilities = z.infer<typeof ProviderCapabilitiesSchema>;
+
+// Mirrors internal/syncengine.AuthType* constants — "password" is the
+// only auth flow with a concrete adapter today; "oauth_token" is a
+// reserved seam the Connect screen doesn't render a form for yet.
+export const VendorProviderSchema = z.object({
+  name: z.string(),
+  display_name: z.string(),
+  auth_type: z.enum(["password", "oauth_token"]),
+  capabilities: ProviderCapabilitiesSchema,
+});
+export type VendorProvider = z.infer<typeof VendorProviderSchema>;
+
+export const VendorConnectionSchema = z.object({
+  id: z.number(),
+  provider: z.string(),
+  // invalid_credentials: the vendor confirmed the password is wrong —
+  // distinct from a transient "error" (vendor outage, network blip).
+  // The sync loop stops retrying automatically once here; the customer
+  // has to reconnect with corrected credentials.
+  status: z.enum(["pending", "active", "error", "revoked", "invalid_credentials"]),
+  last_synced_at: z.string().nullable().optional(),
+  last_error: z.string().nullable().optional(),
+  created_at: z.string(),
+});
+export type VendorConnection = z.infer<typeof VendorConnectionSchema>;
+
 export const SiteSchema = z.object({
   site_id: z.string(),
   name: z.string().nullable().optional(),

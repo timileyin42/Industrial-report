@@ -133,6 +133,29 @@ services:
         condition: service_started
     profiles: ["solarman"]
 
+  # Background poller for the self-service "Connect Your Inverter" flow
+  # (internal/registry/vendor_connections.go, internal/syncengine) — one
+  # binary polling every customer's own vendor-cloud login across every
+  # registered provider, unlike pvpro-sync/solarman-sync which each
+  # drive a single shared operator account. Same "gated behind its own
+  # profile" pattern as solarman-sync: needs VENDOR_CREDENTIAL_ENCRYPTION_KEY
+  # and an API_OPERATOR_EMAIL/PASSWORD service credential in .env before
+  # it's safe to run continuously. Activate once verified locally via:
+  #   docker compose --profile vendor-sync up -d vendor-sync
+  vendor-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.vendor-sync
+    container_name: zgnis-vendor-sync
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      API_BASE_URL: http://api:8080
+    depends_on:
+      api:
+        condition: service_started
+    profiles: ["vendor-sync"]
+
   # Not started by `docker compose up` (no `depends_on` targets it) —
   # run once per environment via:
   #   docker compose run --rm seed-operator -email you@example.com -password 'change-me-now'
