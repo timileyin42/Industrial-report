@@ -108,33 +108,35 @@ export function ConnectInverterPage() {
           ) : providersQuery.isError ? (
             <ErrorState onRetry={() => providersQuery.refetch()} />
           ) : !selected ? (
-            <div className="w-full space-y-3">
-              {providersQuery.data?.map((p) => (
-                <button
-                  key={p.name}
-                  type="button"
-                  onClick={() => setSelected(p)}
-                  className="w-full flex items-center gap-4 bg-white/70 hover:bg-white border border-outline-variant rounded-xl px-5 py-4 text-left transition-all"
-                >
-                  <div className="w-14 h-10 flex-shrink-0 rounded-lg bg-white border border-outline-variant/60 flex items-center justify-center overflow-hidden p-1.5">
-                    {VENDOR_LOGOS[p.name] ? (
-                      <img src={VENDOR_LOGOS[p.name]} alt={`${p.display_name} logo`} className="max-w-full max-h-full object-contain" />
-                    ) : (
-                      <Zap size={20} className="text-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-body-base text-body-base font-bold text-on-surface">{p.display_name}</p>
-                    <p className="font-body-base text-[13px] text-on-surface-variant">
-                      {p.auth_type === "password" ? "Sign in with email & password" : "Coming soon"}
-                    </p>
-                  </div>
-                </button>
-              ))}
+            <div className="w-full space-y-5">
+              <div className="grid grid-cols-2 gap-3">
+                {providersQuery.data?.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => setSelected(p)}
+                    className="flex flex-col items-center gap-3 bg-white/70 hover:bg-white border border-outline-variant rounded-xl px-4 py-5 text-center transition-all"
+                  >
+                    <div className="w-16 h-16 flex-shrink-0 rounded-lg bg-white border border-outline-variant/60 flex items-center justify-center overflow-hidden p-2">
+                      {VENDOR_LOGOS[p.name] ? (
+                        <img src={VENDOR_LOGOS[p.name]} alt={`${p.display_name} logo`} className="max-w-full max-h-full object-contain" />
+                      ) : (
+                        <Zap size={24} className="text-primary" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-body-base text-body-base font-bold text-on-surface">{p.display_name}</p>
+                      <p className="font-body-base text-[12px] text-on-surface-variant">
+                        {p.auth_type === "password" ? "Email & password" : "Coming soon"}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={() => navigate(`/app/sites/${siteId}`, { replace: true })}
-                className="w-full text-center font-body-base text-body-base text-on-surface-variant hover:text-primary transition-colors pt-3"
+                className="w-full text-center font-body-base text-body-base text-on-surface-variant hover:text-primary transition-colors"
               >
                 Skip for now
               </button>
