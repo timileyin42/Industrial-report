@@ -7,6 +7,20 @@ import { listVendorProviders, createVendorConnection } from "../api/vendorConnec
 import { ApiError, type VendorProvider } from "../api/types";
 import { LogoMark } from "../components/brand/Logo";
 import { ErrorState } from "../components/feedback/ErrorState";
+import elinterCspLogo from "../assets/brand/vendors/elinter_csp.png";
+import felicitySolarLogo from "../assets/brand/vendors/felicity_solar.png";
+import deyeCloudLogo from "../assets/brand/vendors/deye_cloud.png";
+
+// Each vendor's own real logo, pulled from their official site/app
+// store listing (see the commit that added these) — keyed by the same
+// provider name the backend uses, so a vendor added later without a
+// logo here just falls back to the generic icon below rather than
+// breaking.
+const VENDOR_LOGOS: Record<string, string> = {
+  elinter_csp: elinterCspLogo,
+  felicity_solar: felicitySolarLogo,
+  deye_cloud: deyeCloudLogo,
+};
 
 // The step right after signup: pick which vendor cloud a customer's
 // existing smart inverter already reports to (no way to auto-detect
@@ -16,11 +30,6 @@ import { ErrorState } from "../components/feedback/ErrorState";
 // an oauth_token vendor is a reserved seam with no adapter built yet,
 // so it's shown but disabled rather than hidden — customers can see
 // what's coming without it looking abandoned.
-//
-// No brand logo assets exist for any vendor yet (design/ has no matching
-// screen — see CLAUDE.md's Design System rule 6), so each provider is a
-// plain glass-card tile with a generic icon rather than an invented
-// brand mark.
 export function ConnectInverterPage() {
   const { session } = useAuth();
   const navigate = useNavigate();
@@ -107,8 +116,12 @@ export function ConnectInverterPage() {
                   onClick={() => setSelected(p)}
                   className="w-full flex items-center gap-4 bg-white/70 hover:bg-white border border-outline-variant rounded-xl px-5 py-4 text-left transition-all"
                 >
-                  <div className="w-10 h-10 flex-shrink-0 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                    <Zap size={20} />
+                  <div className="w-14 h-10 flex-shrink-0 rounded-lg bg-white border border-outline-variant/60 flex items-center justify-center overflow-hidden p-1.5">
+                    {VENDOR_LOGOS[p.name] ? (
+                      <img src={VENDOR_LOGOS[p.name]} alt={`${p.display_name} logo`} className="max-w-full max-h-full object-contain" />
+                    ) : (
+                      <Zap size={20} className="text-primary" />
+                    )}
                   </div>
                   <div className="flex-1">
                     <p className="font-body-base text-body-base font-bold text-on-surface">{p.display_name}</p>
@@ -141,6 +154,15 @@ export function ConnectInverterPage() {
             </div>
           ) : (
             <form className="w-full space-y-6" onSubmit={handleConnect}>
+              {VENDOR_LOGOS[selected.name] && (
+                <div className="w-16 h-12 mx-auto rounded-lg bg-white border border-outline-variant/60 flex items-center justify-center overflow-hidden p-2">
+                  <img
+                    src={VENDOR_LOGOS[selected.name]}
+                    alt={`${selected.display_name} logo`}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="font-label-caps text-label-caps text-on-surface-variant uppercase" htmlFor="vendor-email">
                   {selected.display_name} Email
