@@ -53,7 +53,7 @@ func NewDeyeCloud(appID, appSecret string) *DeyeCloud {
 }
 
 func (p *DeyeCloud) Name() string        { return "deye_cloud" }
-func (p *DeyeCloud) DisplayName() string { return "Deye Cloud" }
+func (p *DeyeCloud) DisplayName() string { return "Deye Inverter" }
 func (p *DeyeCloud) AuthType() string    { return AuthTypePassword }
 func (p *DeyeCloud) Capabilities() Capabilities {
 	return Capabilities{RealtimeData: true, BatteryData: true, GridData: true, LoadData: true}

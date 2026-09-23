@@ -51,7 +51,7 @@ func NewELinterCSP() *ELinterCSP {
 }
 
 func (p *ELinterCSP) Name() string        { return "elinter_csp" }
-func (p *ELinterCSP) DisplayName() string { return "PV Pro" }
+func (p *ELinterCSP) DisplayName() string { return "PV Pro / Chisage" }
 func (p *ELinterCSP) AuthType() string    { return AuthTypePassword }
 func (p *ELinterCSP) Capabilities() Capabilities {
 	return Capabilities{RealtimeData: true, BatteryData: true, GridData: true, LoadData: true}
