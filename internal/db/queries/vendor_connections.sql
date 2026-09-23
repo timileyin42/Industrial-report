@@ -15,10 +15,14 @@ ORDER BY created_at DESC;
 -- synced yet — MarkVendorConnectionSynced is what promotes a row to
 -- 'active', so pending has to be included here or a brand-new
 -- connection could never reach 'active' in the first place), 'active',
--- and 'error' (retried every cycle rather than given up on — a vendor
--- outage or a momentarily wrong password shouldn't need a customer to
--- reconnect by hand). Only 'revoked' is excluded — the customer's own
--- explicit stop signal.
+-- and 'error' (a transient/unconfirmed failure — vendor outage, network
+-- blip — retried every cycle rather than given up on). Both 'revoked'
+-- (the customer's own explicit stop) and 'invalid_credentials' (the
+-- vendor's own response confirmed the password is actually wrong — see
+-- MarkVendorConnectionInvalidCredentials) are excluded: retrying a
+-- confirmed-wrong password forever isn't just wasteful, it risks
+-- locking the customer out of their own vendor account (observed live
+-- against Deye's login endpoint). A customer reconnects to retry it.
 SELECT id, site_id, provider, encrypted_credential, external_ref, last_synced_at
 FROM vendor_connections
 WHERE status IN ('pending', 'active', 'error')
@@ -48,6 +52,15 @@ UPDATE vendor_connections SET encrypted_credential = $2 WHERE id = $1;
 -- customer's own connection row. See internal/syncengine's isolation
 -- requirement.
 UPDATE vendor_connections SET status = 'error', last_error = $2 WHERE id = $1;
+
+-- name: MarkVendorConnectionInvalidCredentials :exec
+-- Distinct from MarkVendorConnectionError: this is only ever called
+-- when the vendor's own response confirmed the account/password itself
+-- is wrong (see syncengine.ErrInvalidCredentials), never for a
+-- transient failure. 'invalid_credentials' rows are excluded from
+-- ListActiveVendorConnections — the poll loop stops retrying this
+-- connection until the customer reconnects with corrected credentials.
+UPDATE vendor_connections SET status = 'invalid_credentials', last_error = $2 WHERE id = $1;
 
 -- name: RevokeVendorConnection :exec
 UPDATE vendor_connections SET status = 'revoked' WHERE id = $1 AND site_id = $2;

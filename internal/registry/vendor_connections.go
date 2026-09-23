@@ -306,3 +306,13 @@ func (v *VendorConnections) MarkError(ctx context.Context, id int64, errMsg stri
 		ID: id, LastError: pgtype.Text{String: errMsg, Valid: true},
 	})
 }
+
+// MarkInvalidCredentials is MarkError's counterpart for a confirmed
+// (not transient) bad-credential failure — see
+// syncengine.ErrInvalidCredentials and this migration's own comment on
+// why 'invalid_credentials' is excluded from ListActiveDecrypted.
+func (v *VendorConnections) MarkInvalidCredentials(ctx context.Context, id int64, errMsg string) error {
+	return v.q.MarkVendorConnectionInvalidCredentials(ctx, db.MarkVendorConnectionInvalidCredentialsParams{
+		ID: id, LastError: pgtype.Text{String: errMsg, Valid: true},
+	})
+}

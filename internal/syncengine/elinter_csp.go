@@ -120,6 +120,9 @@ func (p *ELinterCSP) login(ctx context.Context, email, password string) (*elinte
 		return nil, err
 	}
 	if !out.Success {
+		if looksLikeCredentialError(out.Msg) {
+			return nil, fmt.Errorf("%w: login failed: %s", ErrInvalidCredentials, out.Msg)
+		}
 		return nil, fmt.Errorf("login failed: %s", out.Msg)
 	}
 	return &elinterSession{baseURL: p.baseURL, client: p.client, accessToken: out.Data.AccessToken}, nil

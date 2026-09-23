@@ -102,6 +102,12 @@ func (p *FelicitySolar) login(ctx context.Context, email, password string) (*fel
 		return nil, err
 	}
 	if out.Code != 200 {
+		// code 1002006 is Felicity's own documented "wrong password"
+		// code; looksLikeCredentialError also catches "User does not
+		// exist", confirmed live, which has no documented code at all.
+		if out.Code == 1002006 || looksLikeCredentialError(out.Message) {
+			return nil, fmt.Errorf("%w: login failed: %s", ErrInvalidCredentials, out.Message)
+		}
 		return nil, fmt.Errorf("login failed: %s", out.Message)
 	}
 	var data struct {

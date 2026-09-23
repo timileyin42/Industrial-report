@@ -45,7 +45,11 @@ export type VendorProvider = z.infer<typeof VendorProviderSchema>;
 export const VendorConnectionSchema = z.object({
   id: z.number(),
   provider: z.string(),
-  status: z.enum(["pending", "active", "error", "revoked"]),
+  // invalid_credentials: the vendor confirmed the password is wrong —
+  // distinct from a transient "error" (vendor outage, network blip).
+  // The sync loop stops retrying automatically once here; the customer
+  // has to reconnect with corrected credentials.
+  status: z.enum(["pending", "active", "error", "revoked", "invalid_credentials"]),
   last_synced_at: z.string().nullable().optional(),
   last_error: z.string().nullable().optional(),
   created_at: z.string(),

@@ -127,6 +127,9 @@ func (p *DeyeCloud) login(ctx context.Context, email, password string) (*deyeSes
 		if msg == "" {
 			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		}
+		if looksLikeCredentialError(msg) {
+			return nil, fmt.Errorf("%w: login failed: %s", ErrInvalidCredentials, msg)
+		}
 		return nil, fmt.Errorf("login failed: %s", msg)
 	}
 	return &deyeSession{baseURL: p.baseURL, client: p.client, accessToken: out.AccessToken}, nil

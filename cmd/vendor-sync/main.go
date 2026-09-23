@@ -24,6 +24,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -180,23 +181,40 @@ func bindProviderCalls(ctx context.Context, vendorConns *registry.VendorConnecti
 	}
 }
 
+// markFailure records a connection's failure under the right status —
+// MarkInvalidCredentials (excluded from the next poll cycle) when the
+// vendor's own response confirmed the account/password is wrong (see
+// syncengine.ErrInvalidCredentials), MarkError (retried next cycle)
+// for everything else. A wrong password isn't retried indefinitely:
+// besides being pointless, Deye's login endpoint has been observed
+// live to lock out repeated attempts, so naive infinite retry risks
+// locking a real customer out of their own vendor account.
+func markFailure(ctx context.Context, vendorConns *registry.VendorConnections, connID int64, msg string, err error) {
+	if errors.Is(err, syncengine.ErrInvalidCredentials) {
+		log.Printf("vendor-sync: connection %d: invalid credentials, will not retry until reconnected: %s: %v", connID, msg, err)
+		_ = vendorConns.MarkInvalidCredentials(ctx, connID, msg+": "+err.Error())
+		return
+	}
+	_ = vendorConns.MarkError(ctx, connID, msg+": "+err.Error())
+}
+
 // syncConnection discovers and syncs one customer's vendor account.
 // Any failure here — bad/expired credentials, the vendor's cloud being
 // unavailable, a single device's reading fetch failing — marks only
-// this one connection as errored and returns; it never touches another
-// connection or another customer's site/device rows.
+// this one connection and returns; it never touches another connection
+// or another customer's site/device rows.
 func syncConnection(ctx context.Context, vendorConns *registry.VendorConnections, provider syncengine.Provider, ours *ourAPIClient, httpClient *http.Client, conn registry.ActiveConnection) {
 	discover, fetchReading, err := bindProviderCalls(ctx, vendorConns, provider, conn)
 	if err != nil {
 		log.Printf("vendor-sync: connection %d (%s): %v", conn.ID, conn.Provider, err)
-		_ = vendorConns.MarkError(ctx, conn.ID, err.Error())
+		markFailure(ctx, vendorConns, conn.ID, "bind", err)
 		return
 	}
 
 	devices, err := discover(ctx)
 	if err != nil {
 		log.Printf("vendor-sync: connection %d (%s): discover: %v", conn.ID, conn.Provider, err)
-		_ = vendorConns.MarkError(ctx, conn.ID, "discover: "+err.Error())
+		markFailure(ctx, vendorConns, conn.ID, "discover", err)
 		return
 	}
 	if len(devices) == 0 {
@@ -249,11 +267,10 @@ func syncConnection(ctx context.Context, vendorConns *registry.VendorConnections
 		_ = vendorConns.MarkSynced(ctx, conn.ID, &firstRef)
 		return
 	}
-	msg := "sync failed for every discovered device"
-	if lastErr != nil {
-		msg = lastErr.Error()
+	if lastErr == nil {
+		lastErr = fmt.Errorf("sync failed for every discovered device")
 	}
-	_ = vendorConns.MarkError(ctx, conn.ID, msg)
+	markFailure(ctx, vendorConns, conn.ID, "sync", lastErr)
 }
 
 func ensureDeviceRegistered(ctx context.Context, ours *ourAPIClient, siteID string, dev syncengine.DiscoveredDevice) error {
