@@ -67,7 +67,7 @@ func main() {
 	// connection created against a provider this binary doesn't know
 	// about would sit unsynced forever. See that file's own comment on
 	// why DeyeCloud is conditional on its app credential being set.
-	providerList := []syncengine.Provider{syncengine.NewELinterCSP(), syncengine.NewFelicitySolar()}
+	providerList := []syncengine.Provider{syncengine.NewELinterCSP(), syncengine.NewSunsynkConnect(), syncengine.NewFelicitySolar()}
 	if id, secret := os.Getenv("DEYE_APP_ID"), os.Getenv("DEYE_APP_SECRET"); id != "" && secret != "" {
 		providerList = append(providerList, syncengine.NewDeyeCloud(id, secret))
 	}

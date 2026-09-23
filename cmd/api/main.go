@@ -112,7 +112,7 @@ func main() {
 	// this part" pattern as RESEND_API_KEY/mqttAdmin elsewhere in this
 	// file, so a deployment without Deye credentials yet doesn't show a
 	// vendor tile that can only ever fail to connect.
-	providers := []syncengine.Provider{syncengine.NewELinterCSP(), syncengine.NewFelicitySolar()}
+	providers := []syncengine.Provider{syncengine.NewELinterCSP(), syncengine.NewSunsynkConnect(), syncengine.NewFelicitySolar()}
 	if id, secret := os.Getenv("DEYE_APP_ID"), os.Getenv("DEYE_APP_SECRET"); id != "" && secret != "" {
 		providers = append(providers, syncengine.NewDeyeCloud(id, secret))
 	}

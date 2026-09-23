@@ -32,26 +32,56 @@ import (
 // friction for a non-technical customer — see the plan file for the
 // full reasoning.
 type ELinterCSP struct {
-	baseURL string
-	source  string
-	client  *http.Client
+	baseURL     string
+	source      string
+	name        string
+	displayName string
+	client      *http.Client
 }
 
-// NewELinterCSP defaults source="pvpro" — the brand this project has
-// verified end-to-end. Sunsynk/Powerview accounts share the same
-// backend under a different source value; adding them (if a customer
-// turns out to use one of those apps instead) is a follow-up, not a
-// rewrite of this type.
+// NewELinterCSP defaults to PV Pro (source="pvpro") — the brand this
+// project has verified end-to-end. Use NewELinterCSPBrand for another
+// white-labeled app over the same backend.
 func NewELinterCSP() *ELinterCSP {
+	return NewELinterCSPBrand("elinter_csp", "PV Pro / Chisage", "https://pv.inteless.com", "pvpro")
+}
+
+// NewSunsynkConnect: confirmed against a real, maintained community
+// client (github.com/jamesridgway/sunsynk-api-client) — same
+// login/discovery/flow endpoints as PV Pro (oauth/token/new,
+// anonymous/publicKey, api/v1/plants, api/v1/inverter/{sn},
+// api/v1/inverter/{sn}/flow all match byte-for-byte), just a different
+// base URL (api.sunsynk.net, not pv.inteless.com) and source value.
+// client_id ("csp-web") is unchanged.
+//
+// Powerview (Sol-Ark) is deliberately NOT added alongside this: public
+// research turned up a real domain migration (PowerView's own backend
+// moved off pv.inteless.com to solarkcloud.com around mid-2024) with
+// no equally-confirmed community client to verify the current
+// login/source shape against — adding it on a guess risks a silent
+// login failure for a real customer, the opposite of this project's
+// "verify against real behavior" standard. Add it once that's
+// actually confirmed, the same way Sunsynk was here.
+func NewSunsynkConnect() *ELinterCSP {
+	return NewELinterCSPBrand("sunsynk_connect", "Sunsynk Connect", "https://api.sunsynk.net", "sunsynk")
+}
+
+// NewELinterCSPBrand builds an adapter for one white-labeled app over
+// Chengdu E-linter's shared "CSP" cloud platform. name is the stable
+// key stored in vendor_connections.provider — must be unique across
+// every registered Provider.
+func NewELinterCSPBrand(name, displayName, baseURL, source string) *ELinterCSP {
 	return &ELinterCSP{
-		baseURL: "https://pv.inteless.com",
-		source:  "pvpro",
-		client:  &http.Client{Timeout: 15 * time.Second},
+		baseURL:     baseURL,
+		source:      source,
+		name:        name,
+		displayName: displayName,
+		client:      &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
-func (p *ELinterCSP) Name() string        { return "elinter_csp" }
-func (p *ELinterCSP) DisplayName() string { return "PV Pro / Chisage" }
+func (p *ELinterCSP) Name() string        { return p.name }
+func (p *ELinterCSP) DisplayName() string { return p.displayName }
 func (p *ELinterCSP) AuthType() string    { return AuthTypePassword }
 func (p *ELinterCSP) Capabilities() Capabilities {
 	return Capabilities{RealtimeData: true, BatteryData: true, GridData: true, LoadData: true}
