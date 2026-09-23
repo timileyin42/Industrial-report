@@ -105,9 +105,18 @@ func main() {
 	}
 	// ELinterCSP (PV Pro/Sunsynk/Powerview) is the reference provider —
 	// see docs and the plan file for why it was chosen over an
-	// OAuth-only or approval-gated vendor. Registering the next vendor
-	// here is the only wiring change needed once its Provider is built.
-	providerRegistry := syncengine.NewRegistry(syncengine.NewELinterCSP())
+	// OAuth-only or approval-gated vendor. FelicitySolar needs no
+	// platform-level credential, so it's always registered. DeyeCloud
+	// does (DEYE_APP_ID/DEYE_APP_SECRET, from developer.deyecloud.com/
+	// app) — only registered once both are set, same "unset just skips
+	// this part" pattern as RESEND_API_KEY/mqttAdmin elsewhere in this
+	// file, so a deployment without Deye credentials yet doesn't show a
+	// vendor tile that can only ever fail to connect.
+	providers := []syncengine.Provider{syncengine.NewELinterCSP(), syncengine.NewFelicitySolar()}
+	if id, secret := os.Getenv("DEYE_APP_ID"), os.Getenv("DEYE_APP_SECRET"); id != "" && secret != "" {
+		providers = append(providers, syncengine.NewDeyeCloud(id, secret))
+	}
+	providerRegistry := syncengine.NewRegistry(providers...)
 
 	e := httpapi.NewRouter(httpapi.Deps{
 		Sites:             sites,

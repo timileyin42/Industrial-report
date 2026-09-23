@@ -62,10 +62,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("vendor connections: %v", err)
 	}
-	// Registering the next provider is the only change needed here —
-	// same single line cmd/api/main.go wires it with. See
-	// internal/syncengine/elinter_csp.go's own doc comment.
-	providers := syncengine.NewRegistry(syncengine.NewELinterCSP())
+	// Same provider set cmd/api/main.go registers — must match, or a
+	// connection created against a provider this binary doesn't know
+	// about would sit unsynced forever. See that file's own comment on
+	// why DeyeCloud is conditional on its app credential being set.
+	providerList := []syncengine.Provider{syncengine.NewELinterCSP(), syncengine.NewFelicitySolar()}
+	if id, secret := os.Getenv("DEYE_APP_ID"), os.Getenv("DEYE_APP_SECRET"); id != "" && secret != "" {
+		providerList = append(providerList, syncengine.NewDeyeCloud(id, secret))
+	}
+	providers := syncengine.NewRegistry(providerList...)
 	ours := newOurAPIClient(apiBaseURL, operatorEmail, operatorPassword)
 	httpClient := &http.Client{Timeout: 20 * time.Second}
 
