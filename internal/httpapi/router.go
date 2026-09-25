@@ -251,7 +251,13 @@ func corsMiddleware() echo.MiddlewareFunc {
 	}
 	return middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: origins,
-		AllowMethods: []string{echo.GET, echo.POST, echo.PATCH},
+		// DELETE added for DELETE /v1/sites/:site_id/vendor-connections/:id
+		// (revokeVendorConnection) — the first real DELETE-method route
+		// this frontend ever called from a browser; every earlier
+		// "delete-shaped" action (e.g. revoking a device) used POST to an
+		// action-named path instead, so this gap went unnoticed until a
+		// real browser's CORS preflight actually rejected it.
+		AllowMethods: []string{echo.GET, echo.POST, echo.PATCH, echo.DELETE},
 		AllowHeaders: []string{echo.HeaderAuthorization, echo.HeaderContentType},
 	})
 }
