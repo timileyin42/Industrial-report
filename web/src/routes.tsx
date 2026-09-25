@@ -12,6 +12,7 @@ import { SecurityPage } from "./pages/landing/SecurityPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { ConnectInverterPage } from "./pages/ConnectInverterPage";
+import { InverterConnectionsPage } from "./pages/InverterConnectionsPage";
 import { FleetDashboardPage } from "./pages/FleetDashboardPage";
 import { SitesListPage } from "./pages/SitesListPage";
 import { AddSitePage } from "./pages/AddSitePage";
@@ -100,6 +101,7 @@ export const router = createBrowserRouter([
           { path: "sites/:siteId/analytics", element: <SiteAnalyticsPage /> },
           { path: "devices", element: <DevicesListPage /> },
           { path: "ingestion-log", element: <IngestionAuditPage /> },
+          { path: "connections", element: <InverterConnectionsPage /> },
         ],
       },
     ],

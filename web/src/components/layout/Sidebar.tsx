@@ -84,6 +84,10 @@ interface NavEntry {
   label: string;
   end?: boolean;
   operatorOnly?: boolean;
+  // The inverse of operatorOnly — a restricted customer managing their
+  // own single site's vendor connections, meaningless for an operator
+  // (no personal site_id to manage).
+  restrictedOnly?: boolean;
 }
 
 interface NavSection {
@@ -102,6 +106,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: "/app", icon: Grid2x2, label: "Dashboard", end: true, operatorOnly: true },
       { to: "/app/sites", icon: MapPin, label: "Sites" },
       { to: "/app/devices", icon: Radio, label: "Devices" },
+      { to: "/app/connections", icon: Zap, label: "Inverter Connections", restrictedOnly: true },
       { to: "/app/map", icon: Map, label: "Map View", operatorOnly: true },
       { to: "/app/alerts", icon: Bell, label: "Alerts", operatorOnly: true },
     ],
@@ -188,7 +193,11 @@ const sectionLabelClass = "px-4 pt-5 pb-1.5 font-label-caps text-label-caps text
 function renderSections(isOperator: boolean, collapsed: boolean, onNavigate?: () => void) {
   return NAV_SECTIONS.map((section) => {
     if (section.operatorOnly && !isOperator) return null;
-    const items = section.items.filter((item) => isOperator || !item.operatorOnly);
+    const items = section.items.filter((item) => {
+      if (item.operatorOnly && !isOperator) return false;
+      if (item.restrictedOnly && isOperator) return false;
+      return true;
+    });
     if (items.length === 0) return null;
     return (
       <div key={section.label ?? "ungrouped"}>

@@ -30,3 +30,7 @@ export async function listVendorConnections(siteId: string): Promise<VendorConne
   const data = await apiRequest<unknown>(`/v1/sites/${siteId}/vendor-connections`);
   return z.object({ items: z.array(VendorConnectionSchema) }).parse(data).items;
 }
+
+export async function revokeVendorConnection(siteId: string, connectionId: number): Promise<void> {
+  await apiRequest<void>(`/v1/sites/${siteId}/vendor-connections/${connectionId}`, { method: "DELETE" });
+}
