@@ -9,7 +9,7 @@ import { StatusBadge, type Status } from "../components/status/StatusBadge";
 import { ConnectVendorFlow } from "../components/vendor/ConnectVendorFlow";
 import { VENDOR_LOGOS } from "../components/vendor/vendorLogos";
 import { useAuth } from "../auth/AuthContext";
-import { listVendorConnections, revokeVendorConnection } from "../api/vendorConnections";
+import { listVendorConnections, listVendorProviders, revokeVendorConnection } from "../api/vendorConnections";
 import { ApiError, type VendorConnection } from "../api/types";
 
 // Reached from Settings (a restricted-only nav item — see Sidebar) —
@@ -43,6 +43,12 @@ export function InverterConnectionsPage() {
     queryKey: ["vendor-connections", siteId],
     queryFn: () => listVendorConnections(siteId),
   });
+  // Connections only carry the provider's stable key (e.g. "deye_cloud")
+  // — this looks up the friendly display_name the picker already shows,
+  // so a connected row reads "Deye Inverter" rather than the raw key.
+  const providersQuery = useQuery({ queryKey: ["vendor-providers"], queryFn: listVendorProviders });
+  const displayName = (provider: string) =>
+    providersQuery.data?.find((p) => p.name === provider)?.display_name ?? provider;
 
   const revokeMutation = useMutation({
     mutationFn: (connectionId: number) => revokeVendorConnection(siteId, connectionId),
@@ -89,7 +95,7 @@ export function InverterConnectionsPage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-body-base text-body-base font-bold text-on-surface truncate">{conn.provider}</p>
+                        <p className="font-body-base text-body-base font-bold text-on-surface truncate">{displayName(conn.provider)}</p>
                         {conn.status === "invalid_credentials" ? (
                           <p className="font-body-base text-[12px] text-error">
                             Password no longer works — disconnect and reconnect to fix it.
